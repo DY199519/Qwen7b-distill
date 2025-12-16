@@ -2,7 +2,7 @@
 # coding: utf-8
 """
 direct_rlhf_generator.py
-直接从原始fusion数据和评分数据生成RLHF格式数据集
+Directly generate an RLHF - format dataset from the original fusion data and scoring data.
 """
 import json
 import argparse
@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Dict, List, Any
 import sys
 import pandas as pd
-# ==================== 配置部分 - 修改这里 ====================
+# ==================== configuration ====================
 BASE_DIR = Path(r"D:\project7\10000final")
 FUSION_JSON = BASE_DIR / "doubao-pro-32k_answers_2+1-2-1-9400.json"
 SCORES_JSON = BASE_DIR / "grades_doubao-pro-256k_answers_2+1-2-1-9400.json"
-OUTPUT_BASE = BASE_DIR / "rlhf_train_top100" # 基础文件名，会生成 .json 和 .parquet
-TOP_N = 100 # 取评分最高的前N个
+OUTPUT_BASE = BASE_DIR / "rlhf_train_top100" # basic filename，generate .json and .parquet format
+TOP_N = 100 # get the top N with the high score
 # ===========================================================
-# 配置日志
+# configuration
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 def load_scores_data(scores_path: Path) -> Dict[str, Dict]:
-    """加载评分数据"""
+    """load the scoring data"""
     try:
         with scores_path.open("r", encoding="utf-8") as f:
             scores_data = json.load(f)
@@ -44,24 +44,24 @@ def load_scores_data(scores_path: Path) -> Dict[str, Dict]:
                     "num_valid_trials": item.get("num_valid_trials", 0),
                 }
        
-        logger.info(f"成功加载了 {len(question_scores)} 个问题的评分数据")
+        logger.info(f"successfully load  {len(question_scores)} data")
         return question_scores
        
     except Exception as e:
-        logger.error(f"加载评分数据失败: {e}")
+        logger.error(f"failure: {e}")
         return {}
 def create_rlhf_sample(item: Dict[str, Any]) -> Dict[str, Any]:
     """
-    将fusion数据项转换为RLHF格式
+
     """
-    # problem就是原始的question
+    # problem is the original question
     problem_text = item.get("question", "")
    
-    # 获取fusion_prompt和fusion_reply
+    # get fusion_prompt和fusion_reply
     fusion_prompt = item.get("fusion_prompt", "")
     fusion_reply = item.get("fusion_reply", "")
    
-    # 拼接solution，明确标记两部分
+    # concatenate solution
     if fusion_prompt and fusion_reply:
         solution_text = (
             "【Fusion Prompt】\n"
@@ -74,7 +74,7 @@ def create_rlhf_sample(item: Dict[str, Any]) -> Dict[str, Any]:
     else:
         solution_text = ""
    
-    # 构建messages - 包含完整对话
+    # build messages
     messages = [
         {
             "role": "user",
@@ -86,35 +86,34 @@ def create_rlhf_sample(item: Dict[str, Any]) -> Dict[str, Any]:
         }
     ]
    
-    # 构建RLHF格式的样本
+    # create RLHF demo
     rlhf_sample = {
         "problem": {"Value": problem_text},
         "solution": {"Value": solution_text},
-        "messages": {"Value": messages} # 直接存储列表，不是JSON字符串
+        "messages": {"Value": messages} # 
     }
    
     return rlhf_sample
 def generate_dataset():
-    """生成RLHF格式的数据集"""
    
-    # 检查文件是否存在
+    # file is or not?
     if not FUSION_JSON.exists():
-        logger.error(f"Fusion数据文件不存在: {FUSION_JSON}")
+        logger.error(f"Fusion N/A: {FUSION_JSON}")
         return 1
    
     if not SCORES_JSON.exists():
-        logger.error(f"评分数据文件不存在: {SCORES_JSON}")
+        logger.error(f"Scoring data N/A: {SCORES_JSON}")
         return 1
    
-    # 加载评分数据
-    logger.info("正在加载评分数据...")
+    # loading data
+    logger.info("Loading...")
     question_scores = load_scores_data(SCORES_JSON)
     if not question_scores:
-        logger.error("未能加载评分数据")
+        logger.error("do not load")
         return 1
    
-    # 加载fusion数据
-    logger.info("正在加载fusion数据...")
+    # loading fusion data
+    logger.info("Loading fusion data...")
     with FUSION_JSON.open("r", encoding="utf-8") as f:
         data = json.load(f)
    
@@ -123,51 +122,51 @@ def generate_dataset():
     elif isinstance(data, list):
         items = data
     else:
-        logger.error(f"不支持的数据格式: {type(data)}")
+        logger.error(f"do not support : {type(data)}")
         return 1
    
-    logger.info(f"加载了 {len(items)} 条fusion数据")
+    logger.info(f"loaded {len(items)}  fusion data")
    
-    # 匹配评分并过滤数据
+    # match the scoring data and select
     items_with_scores = []
     required_fields = ["question", "fusion_reply"]
    
     for item in items:
         question = item.get("question", "")
        
-        # 检查是否有评分
+        # determine scoring 
         if question not in question_scores:
             continue
            
-        # 检查必要字段
+        # 
         if not all(item.get(field) for field in required_fields):
             continue
        
-        # 检查内容长度
+        # len(question)
         question_len = len(item.get("question", ""))
         fusion_reply_len = len(item.get("fusion_reply", ""))
        
         if question_len < 10 or fusion_reply_len < 100:
             continue
        
-        # 添加评分信息
+        # append scoring info
         item["avg_score_50"] = question_scores[question]["avg_score_50"]
         items_with_scores.append(item)
    
-    logger.info(f"找到 {len(items_with_scores)} 条有效数据（有评分且字段完整）")
+    logger.info(f"get {len(items_with_scores)} valid data (with scores and complete fields)")
    
-    # 按评分排序，取TOP N
+    #  rank and TOP N
     items_with_scores.sort(key=lambda x: x["avg_score_50"], reverse=True)
     items_to_process = items_with_scores[:TOP_N]
    
-    logger.info(f"\n将处理得分最高的 {len(items_to_process)} 条数据")
-    logger.info("\nTOP 5 高分问题（50分制）：")
+    logger.info(f"\nProcess the {len(items_to_process)} pieces of data with the highest scores")
+    logger.info("\nTOP 5 High - score questions (on a 50 - point scale):")
     for i, item in enumerate(items_to_process[:5], 1):
         score = item["avg_score_50"]
         question = item["question"][:80]
-        logger.info(f" {i}. 得分: {score:.2f}/50 - {question}...")
+        logger.info(f" {i}. scoring: {score:.2f}/50 - {question}...")
    
-    # 转换为RLHF格式
+    # switch to RLHF 
     rlhf_dataset = []
     for idx, item in enumerate(items_to_process, 1):
         try:
@@ -177,53 +176,53 @@ def generate_dataset():
                 rlhf_dataset.append(rlhf_sample)
                
                 if idx == 1:
-                    logger.info("\n✅ 第一个RLHF样本示例:")
+                    logger.info("\n✅ The first RLHF sample example:")
                     logger.info("-" * 60)
-                    logger.info(f"Problem (原始问题): {rlhf_sample['problem']['Value'][:200]}...")
+                    logger.info(f"Problem (original ques): {rlhf_sample['problem']['Value'][:200]}...")
                     logger.info("-" * 60)
                
         except Exception as e:
-            logger.error(f"处理第 {idx} 个样本失败: {e}")
+            logger.error(f"Failed to process the {idx}th sample: {e}")
             continue
    
     if not rlhf_dataset:
-        logger.error("未能生成任何有效的RLHF样本")
+        logger.error("Failed to generate any valid RLHF samples")
         return 1
    
-    # 确保输出目录存在
+    # Ensure the output directory exists
     OUTPUT_BASE.parent.mkdir(parents=True, exist_ok=True)
    
-    # 保存为JSON格式
+    # save to JSON
     json_file = OUTPUT_BASE.with_suffix('.json')
     with json_file.open("w", encoding="utf-8") as f:
         json.dump(rlhf_dataset, f, ensure_ascii=False, indent=2)
-    logger.info(f"✅ JSON格式已保存到: {json_file}")
+    logger.info(f"✅ JSON has saved: {json_file}")
    
-    # 保存为Parquet格式
+    # save to Parquet
     parquet_file = OUTPUT_BASE.with_suffix('.parquet')
-    # 将嵌套的字典结构展平为DataFrame
+    # switch to DataFrame
     df_data = []
     for item in rlhf_dataset:
         df_data.append({
             "problem": item["problem"]["Value"],
             "solution": item["solution"]["Value"],
-            "messages": item["messages"]["Value"] # 直接存储列表，Arrow会自动处理
+            "messages": item["messages"]["Value"]
         })
     df = pd.DataFrame(df_data)
     df.to_parquet(parquet_file, index=False)
-    logger.info(f"✅ Parquet格式已保存到: {parquet_file}")
+    logger.info(f"✅ Parquet has saved: {parquet_file}")
    
-    logger.info(f"\n✅ 成功生成 {len(rlhf_dataset)} 个RLHF训练样本")
+    logger.info(f"\n✅ Successfully generated {len(rlhf_dataset)} RLHF training samples")
    
-    # 统计信息
-    logger.info("\n📊 数据集统计:")
+    # statistical info
+    logger.info("\n📊 dataset:")
     problem_lengths = [len(item["problem"]["Value"]) for item in rlhf_dataset]
     solution_lengths = [len(item["solution"]["Value"]) for item in rlhf_dataset]
-    logger.info(f" - 样本数量: {len(rlhf_dataset)}")
-    logger.info(f" - Problem平均长度: {sum(problem_lengths)/len(problem_lengths):.0f} 字符")
-    logger.info(f" - Solution平均长度: {sum(solution_lengths)/len(solution_lengths):.0f} 字符")
+    logger.info(f" - Sample size: {len(rlhf_dataset)}")
+    logger.info(f" - Problem average len: {sum(problem_lengths)/len(problem_lengths):.0f} character")
+    logger.info(f" - Solution average len: {sum(solution_lengths)/len(solution_lengths):.0f} character")
    
-    # 输出 Excel: 每道题和评分，按照评分从高往下
+    # output Excel: or each question and its corresponding score, arrange them in descending order of scores
     scores_data = []
     for item in items_with_scores:
         scores_data.append({
@@ -233,17 +232,16 @@ def generate_dataset():
     df_scores = pd.DataFrame(scores_data)
     excel_file = OUTPUT_BASE.with_suffix('.xlsx')
     df_scores.to_excel(excel_file, index=False)
-    logger.info(f"✅ Excel格式已保存到: {excel_file}")
+    logger.info(f"✅saved to: {excel_file}")
    
     return 0
 def main():
-    parser = argparse.ArgumentParser(description="生成RLHF数据集")
-    parser.add_argument("--top", type=int, help="覆盖默认的TOP_N值")
-    parser.add_argument("--output", type=str, help="覆盖默认的输出基础文件名")
+    parser = argparse.ArgumentParser(description="generate RLHF dataset")
+    parser.add_argument("--top", type=int, help="Override the default TOP_N value")
+    parser.add_argument("--output", type=str, help="Override the default base output file name")
    
     args = parser.parse_args()
    
-    # 如果提供了命令行参数，覆盖默认值
     if args.top:
         global TOP_N
         TOP_N = args.top
@@ -253,14 +251,15 @@ def main():
         OUTPUT_BASE = Path(args.output)
    
     logger.info("=" * 70)
-    logger.info("RLHF数据集生成器")
+    logger.info("RLHF data generator")
     logger.info("=" * 70)
-    logger.info(f"Fusion数据: {FUSION_JSON}")
-    logger.info(f"评分数据: {SCORES_JSON}")
-    logger.info(f"输出文件: {OUTPUT_BASE}.json 和 {OUTPUT_BASE}.parquet")
-    logger.info(f"处理数量: TOP {TOP_N}")
+    logger.info(f"Fusion data: {FUSION_JSON}")
+    logger.info(f"scoring dataset: {SCORES_JSON}")
+    logger.info(f"output file: {OUTPUT_BASE}.json 和 {OUTPUT_BASE}.parquet")
+    logger.info(f"process data: TOP {TOP_N}")
     logger.info("=" * 70)
    
     return generate_dataset()
 if __name__ == "__main__":
+
     sys.exit(main())
