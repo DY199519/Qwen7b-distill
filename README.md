@@ -10,8 +10,8 @@ Fintuning infer
 infer
 CUDA_VISIBLE_DEVICES=0 swift infer --model Qwen/Qwen2.5-7B-Instruct --adapters /root/autodl-tmp/output/v26-20250806-122310/checkpoint-348  --stream true
 
-pip install transformers==4.44.2 ms-swift  sft版本
-pip install ms-swift==3.5.0 transformers==4.46.0 trl==0.17.0 peft==0.11.0 torch deepspeed latex2sympy2 math_verify e2b-code-interpreter aiohttp python-dotenv grpo版本
+pip install transformers==4.44.2 ms-swift  sft(version)
+pip install ms-swift==3.5.0 transformers==4.46.0 trl==0.17.0 peft==0.11.0 torch deepspeed latex2sympy2 math_verify e2b-code-interpreter aiohttp python-dotenv grpo(version)
 
 
 MODELSCOPE_CACHE=/root/autodl-tmp/modelscope \
