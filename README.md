@@ -1,7 +1,7 @@
 ### Folder introduction
-### The scripts in the "project - prepare" folder are for pre - processing cross - domain problems.
-### The scripts in the "2+1" folder are for the innovative solution proposed: Serial Model.
-### The scripts in the "3 + 1" folder are for the innovative solution proposed: Summary Model.
+###### The scripts in the "project - prepare" folder are for pre - processing cross - domain problems.
+###### The scripts in the "2+1" folder are for the innovative solution proposed: Serial Model.
+###### The scripts in the "3 + 1" folder are for the innovative solution proposed: Summary Model.
 
 
 ### Experimental Setup
