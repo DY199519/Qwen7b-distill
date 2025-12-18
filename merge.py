@@ -6,64 +6,62 @@ from pathlib import Path
 from datetime import datetime
 
 # ==============================================
-# 📁 路径配置区域 - 请在此处修改文件路径
+# 📁 modify the folder path
 # ==============================================
 
-# 基础目录配置
+# basic directory configuration
 BASE_DIR = Path(r"D:\project7\prompt")
 BASE_DIR_1 = Path(r"D:\project7")
 BASE_DIR_2 = Path(r"D:\project7\merge10000")
 
-# 要合并的JSON文件列表（请修改为你的文件路径）
+# merge the JSON files
 files_to_merge = [
-    BASE_DIR_2 / "grades-3+1-1-3600.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-3600-4400.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-4400-5000.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-5000-5800.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-5800-6300.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-6300-6800.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-6800-7800.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-7800-8100.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-8100-8600.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-8600-8900.json",       # 第一个文件
-    BASE_DIR_2 / "grades-3+1-8900-9400.json",       # 第一个文件
+    BASE_DIR_2 / "grades-3+1-1-3600.json",      
+    BASE_DIR_2 / "grades-3+1-3600-4400.json",       
+    BASE_DIR_2 / "grades-3+1-4400-5000.json",       
+    BASE_DIR_2 / "grades-3+1-5000-5800.json",      
+    BASE_DIR_2 / "grades-3+1-5800-6300.json",      
+    BASE_DIR_2 / "grades-3+1-6300-6800.json",    
+    BASE_DIR_2 / "grades-3+1-6800-7800.json",       
+    BASE_DIR_2 / "grades-3+1-7800-8100.json",       
+    BASE_DIR_2 / "grades-3+1-8100-8600.json",       
+    BASE_DIR_2 / "grades-3+1-8600-8900.json",      
+    BASE_DIR_2 / "grades-3+1-8900-9400.json",       
 
 ]
-# 输出文件路径
+# output file path
 output_file = BASE_DIR_2 / "grades-3+1-1-9400.json"
 
-# 不完整题目的输出文件路径（自动生成，也可以手动修改）
+# aotumatically generate
 incomplete_output_file = BASE_DIR_2 / "incomplete_questions1-3600.json"
 
 # ==============================================
-# ⚙️ 功能配置区域 - 请在此处修改功能选项
+# ⚙️ modify function options
 # ==============================================
 
-# 是否只预览结果（不保存文件）
 preview_only = False
 
-# 是否重命名default字段 (推荐开启，将default_prompt/default_reply重命名为combination_1格式)
 rename_default_fields_flag = True
 
-# 是否检查模型答案完整性（仅对multi_model_answer类型文件有效）
+# Whether to check the integrity of the model answers (only valid for files of the multi_model_answer type)
 check_model_completeness = True
 
-# 必需的模型列表（使用模糊匹配）
+# Required model list (using fuzzy matching)
 required_models = ["doubao-pro", "gemini-2.5-flash", "grok-3"]
 
-# 是否将不完整的题目单独保存
+# Whether to save incomplete questions separately
 save_incomplete_separately = True
 
 
 def load_json_files(file_paths: List[str]) -> List[Dict]:
     """
-    加载多个JSON文件
+        loading multiply JSON
     
     Args:
-        file_paths: JSON文件路径列表
+        file_paths: 
         
     Returns:
-        加载的JSON数据列表
+        List of loaded JSON data
     """
     json_data = []
     
@@ -72,15 +70,15 @@ def load_json_files(file_paths: List[str]) -> List[Dict]:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 json_data.append(data)
-                print(f"成功加载文件: {file_path}")
+                print(f"successfully load: {file_path}")
         except FileNotFoundError:
-            print(f"错误: 文件 {file_path} 不存在")
+            print(f"ERROR: The file {file_path} does not exist.")
             sys.exit(1)
         except json.JSONDecodeError as e:
-            print(f"错误: 文件 {file_path} 不是有效的JSON格式: {e}")
+            print(f"ERROR: The file {file_path} is not valid JSON: {e}")
             sys.exit(1)
         except Exception as e:
-            print(f"错误: 读取文件 {file_path} 时发生错误: {e}")
+            print(f"ERROR: An error occurred while reading the file {file_path}: {e}")
             sys.exit(1)
     
     return json_data
@@ -88,16 +86,16 @@ def load_json_files(file_paths: List[str]) -> List[Dict]:
 
 def detect_merge_type(json_data: List[Dict]) -> str:
     """
-    检测合并类型
+    Detect merge type
     
     Args:
-        json_data: 加载的JSON数据列表
+        json_data: 
         
     Returns:
-        'list' - 如果所有数据都是字典列表
-        'detailed_results' - 如果所有数据都是包含detailed_results的字典
-        'questions' - 如果所有数据都是包含questions的字典
-        'grade' - 如果所有数据都是包含statistics和detailed_results的评分文件
+        'list' 
+        'detailed_results' 
+        'questions' 
+        'grade'
     """
     if not json_data:
         return 'unknown'
@@ -718,4 +716,5 @@ def print_merge_summary(merged_result: Union[List[Dict], Dict], merge_type: str,
 
 
 if __name__ == "__main__":
+
     main()   
