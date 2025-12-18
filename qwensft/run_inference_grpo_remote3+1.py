@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-GRPO model batch inference script (supports resuming from breakpoints)
+GRPO model batch inference script (supports checkpoint resumption)
 Used to run GRPO inference on AutoDL servers, process interdisciplinary questions, and save results
 """
 
@@ -64,7 +64,7 @@ def load_questions_from_file(file_path):
                     
                     # Verify question format and quantity
                     print(f"  Original list length: {len(questions_data)}")
-                    print(f"  Extracted questions count: {len(questions)}")
+                    print(f"  Extracted question count: {len(questions)}")
                     
                     # Display first 3 and last 3 questions for verification
                     if questions:
@@ -87,8 +87,8 @@ def load_questions_from_file(file_path):
                 import traceback
                 traceback.print_exc()
         
-        # Method 2: If exec fails, don't use regular expressions (as they easily lose data)
-        # Instead, parse the Python list manually
+        # Method 2: If exec fails, don't use regular expressions (prone to data loss)
+        # Instead, manually parse the Python list
         if not questions and 'high_quality_crossdisciplinary_questions = [' in content:
             try:
                 # Find the start and end of the list
@@ -97,7 +97,7 @@ def load_questions_from_file(file_path):
                     # Find list content from start position
                     list_start = content.find('[', start_idx) + 1
                     
-                    # Calculate bracket balance to find the end of the list
+                    # Calculate bracket balance to find list end
                     bracket_count = 1
                     idx = list_start
                     while bracket_count > 0 and idx < len(content):
@@ -135,10 +135,10 @@ def load_questions_from_file(file_path):
             
             if potential_questions:
                 questions = potential_questions
-                print(f"Loaded {len(questions)} questions in plain text format")
+                print(f"Loaded {len(questions)} questions via plain text method")
         
         if not questions:
-            print("❌ Warning: Failed to parse any questions")
+            print("❌ Warning: Could not parse any questions")
         elif len(questions) < 200:
             print(f"⚠ Warning: Only loaded {len(questions)} questions, expected 200")
         
@@ -155,26 +155,26 @@ def load_questions_from_file(file_path):
 
 def validate_and_fix_question(question, input_file, question_index):
     """
-    Verify if the question is complete (should end with a question mark), re-read if incomplete
+    Verify if the question is complete (should end with a question mark), reread if incomplete
     """
     if question.endswith('?') or question.endswith('？'):
         return question
     
-    print(f"  ⚠ Question incomplete, re-reading: {question[:50]}...")
+    print(f"  ⚠ Incomplete question, rereading: {question[:50]}...")
     
-    # Re-read complete question
+    # Reread complete question
     try:
         questions = load_questions_from_file(input_file)
         if 0 <= question_index < len(questions):
             full_question = questions[question_index]
             if full_question.endswith('?') or full_question.endswith('？'):
-                print(f"  ✓ Successfully re-read complete question")
+                print(f"  ✓ Successfully reread complete question")
                 return full_question
             else:
-                print(f"  ⚠ Re-read question is still incomplete")
+                print(f"  ⚠ Reread question is still incomplete")
                 return full_question
     except Exception as e:
-        print(f"  ✗ Failed to re-read question: {e}")
+        print(f"  ✗ Failed to reread question: {e}")
     
     return question
 
@@ -209,9 +209,9 @@ def save_single_result(result, output_file, all_results):
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
-            f.write(f"Swift Model Inference Results\n")
-            f.write(f"Generation Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Total Questions: {len(all_results)}\n")
+            f.write(f"Swift model inference results\n")
+            f.write(f"Generation time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total questions: {len(all_results)}\n")
             f.write("=" * 80 + "\n\n")
             
             for idx, res in enumerate(all_results, 1):
@@ -222,7 +222,7 @@ def save_single_result(result, output_file, all_results):
                 f.write(f"\nTimestamp: {res['timestamp']}\n")
                 f.write("=" * 80 + "\n\n")
         
-        print(f"  ✓ Results saved (Total: {len(all_results)})")
+        print(f"  ✓ Results saved (total: {len(all_results)})")
         
     except Exception as e:
         print(f"  ✗ Error saving results: {e}")
@@ -320,7 +320,7 @@ def run_single_inference(question, model_path, adapters_path, timeout=120):
 
 def run_batch_inference_with_checkpoint(questions, model_path, adapters_path, output_file, input_file):
     """
-    Batch inference with breakpoint resume support
+    Batch inference with checkpoint resumption support
     """
     processed = load_existing_results(output_file)
     all_results = list(processed.values())
@@ -349,7 +349,7 @@ def run_batch_inference_with_checkpoint(questions, model_path, adapters_path, ou
     
     for idx, (question_index, question) in enumerate(to_process, 1):
         question_num = question_index + 1
-        print(f"\nProcessing question {question_num}/{total_questions} (remaining {idx}/{len(to_process)}):")
+        print(f"\nProcessing question {question_num}/{total_questions} (processing {idx}/{len(to_process)}):")
         
         # Validate and fix question
         question = validate_and_fix_question(question, input_file, question_index)
@@ -447,17 +447,16 @@ def main():
     Main function
     """
     model_path = "Qwen/Qwen2.5-7B-Instruct"
-    adapters_path = "/root/autodl-tmp/output/grpo2+1/checkpoint-300"
-
+    adapters_path = "/root/autodl-tmp/output/grpo3+1/checkpoint-300"
     if len(sys.argv) > 1:
         input_file = sys.argv[1]
     else:
         input_file = "/root/200.txt"
     
-    output_file = "/root/inference_results_grpo2+1.txt"
+    output_file = "/root/inference_results_grpo3+1.txt"
     
     print("=" * 50)
-    print("Swift Batch Inference Script (supports resuming from breakpoints)")
+    print("Swift Batch Inference Script (supports checkpoint resumption)")
     print("=" * 50)
     print(f"Model: {model_path}")
     print(f"Adapters: {adapters_path}")
@@ -472,7 +471,7 @@ def main():
     
     cuda_available = os.environ.get('CUDA_VISIBLE_DEVICES')
     if cuda_available:
-        print(f"✓ CUDA devices: {cuda_available}")
+        print(f"✓ CUDA device: {cuda_available}")
     else:
         print("⚠ CUDA_VISIBLE_DEVICES not set, will use default GPU 0")
     
@@ -499,7 +498,7 @@ def main():
     print(f"Total processed questions: {len(results)}")
     print(f"Success: {len([r for r in results if 'error' not in r['answer'] and 'timeout' not in r['answer'] and 'failed' not in r['answer']])}")
     print(f"Failed: {len([r for r in results if 'error' in r['answer'] or 'timeout' in r['answer'] or 'failed' in r['answer']])}")
-    print(f"Results file: {output_file}")
+    print(f"Result file: {output_file}")
     print(f"JSON file: {output_file.replace('.txt', '.json')}")
     print("=" * 50)
 
@@ -508,11 +507,11 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n\nUser interrupted program")
-        print("Progress has been saved, next run will resume from breakpoint")
+        print("Progress has been saved, next run will resume from checkpoint")
         import sys
         sys.exit(0)
     except Exception as e:
-        print(f"\nProgram error: {e}")
+        print(f"\nProgram exception: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
