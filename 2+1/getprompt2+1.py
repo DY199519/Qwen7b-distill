@@ -3,13 +3,13 @@
 """
 multmm1_build_prompts.py
 ------------------------
-读取JSON文件并生成prompt：
-  · 读取包含questions和answers的JSON文件
-  · 按不同模型组合提取答案
-  · 检查答案质量，过滤不合格的答案
-  · 从外部文件读取prompt模板
-  · 为每个组合生成独立的JSON文件
-  · 将组合中最后一个模型的答案单独保存
+Read JSON files and generate prompts:
+  · Read JSON files containing questions and answers
+  · Extract answers according to different model combinations
+  · Check answer quality and filter out不合格的答案
+  · Read prompt templates from external files
+  · Generate independent JSON files for each combination
+  · Save the answer from the last model in the combination separately
 """
 
 import json, csv
@@ -18,75 +18,75 @@ import re
 from typing import Tuple, List, Dict, Any
 from datetime import datetime
 
-# ========== 输出配置（放在最前面，方便修改） ==========
-OUTPUT_DIR = Path(r"D:\project7\MM\result")  # <-- 修改这里设置输出目录
-OUTPUT_FILE_PREFIX = "finalprompt"  # <-- 输出文件前缀
-OUTPUT_FILE_SUFFIX = "2+1_7800-8100"  # <-- 输出文件后缀
+# ========== Output Configuration (placed at the top for easy modification) ==========
+OUTPUT_DIR = Path(r"D:\project7\MM\result")  # <-- Modify here to set the output directory
+OUTPUT_FILE_PREFIX = "finalprompt"  # <-- Output file prefix
+OUTPUT_FILE_SUFFIX = "2+1_7800-8100"  # <-- Output file suffix
 # =====================================================
 
-# === 1. 路径配置 ===
+# === 1. Path Configuration ===
 BASE_DIR = Path(r"D:\project7\prompt")
 json_path = Path(r"D:\project7\multi_model_answers7800-8100.json")
 
-# Prompt 文件路径
+# Prompt file path
 PROMPT_FILE = BASE_DIR / "prompt-2+1-1.txt"
 
-# 模型组合配置
+# Model combination configuration
 MODEL_COMBINATIONS = {
     "combination_1": ["gemini", "grok", "doubao"],
     # "combination_2": ["moonshot", "Yi", "gpt"],
     # "combination_3": ["llama", "vucina"],
 }
 
-# === 2. 质量检查参数 ===
-MIN_ANSWER_LENGTH = 100  # 最小答案长度
-MIN_COMPLETE_LENGTH = 50  # 完整性最小长度
+# === 2. Quality Check Parameters ===
+MIN_ANSWER_LENGTH = 100  # Minimum answer length
+MIN_COMPLETE_LENGTH = 50  # Minimum length for completeness
 
-# === 3. 答案质量检查函数 ===
+# === 3. Answer Quality Check Function ===
 def check_answer_quality(answer_text: str) -> Tuple[bool, str]:
     """
-    检查答案质量（使用与之前相同的标准）
-    返回: (是否合格, 问题描述)
+    Check answer quality (using the same standards as before)
+    Return: (whether it is qualified, problem description)
     """
-    # 检查是否为空
+    # Check if it's empty
     if not answer_text or answer_text.strip() == "":
-        return False, "空答案"
+        return False, "Empty answer"
     
     answer_text = answer_text.strip()
     
-    # 检查长度
+    # Check length
     if len(answer_text) < MIN_COMPLETE_LENGTH:
-        return False, f"答案过短({len(answer_text)}字符)"
+        return False, f"Answer too short ({len(answer_text)} characters)"
     
-    # 简单检查：是否以常见的完整标点结尾
+    # Simple check: whether it ends with common complete punctuation
     if answer_text.endswith(('。', '！', '？', '.', '!', '?')):
-        return True, "完整"
+        return True, "Complete"
     
-    # 如果没有标点结尾，检查长度
+    # If there's no punctuation at the end, check the length
     if len(answer_text) < MIN_ANSWER_LENGTH:
-        return False, f"无结尾标点且较短({len(answer_text)}字符)"
+        return False, f"No ending punctuation and short ({len(answer_text)} characters)"
     
-    # 长答案但无标点，也视为不完整
-    return False, f"无结尾标点({len(answer_text)}字符)"
+    # Long answers without punctuation are also considered incomplete
+    return False, f"No ending punctuation ({len(answer_text)} characters)"
 
-# === 4. 读取 Prompt 模板 ===
+# === 4. Read Prompt Template ===
 def load_prompt_template():
-    """从文件读取 prompt 模板"""
+    """Read prompt template from file"""
     try:
         with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
             template = f.read().strip()
-            print(f"✓ 成功读取 prompt 模板：{PROMPT_FILE}")
+            print(f"✓ Successfully read prompt template: {PROMPT_FILE}")
             return template
     except FileNotFoundError:
-        print(f"⚠️ 警告：未找到 prompt 文件：{PROMPT_FILE}")
-        # 使用默认模板作为备份
-        default_template = '请回答："{q}"，基于以下回答对你的答案进行完善：{ctx}。'
-        print(f"  使用默认 prompt 模板")
+        print(f"⚠️ Warning: Prompt file not found: {PROMPT_FILE}")
+        # Use default template as backup
+        default_template = 'Please answer: "{q}", improve your answer based on the following responses: {ctx}.'
+        print(f"  Using default prompt template")
         return default_template
 
-# === 5. 工具函数 ===
+# === 5. Utility Functions ===
 def fuzzy_match_model(model_pattern, available_models):
-    """模糊匹配模型名称，返回匹配的模型列表"""
+    """Fuzzy match model names and return the list of matched models"""
     matched_models = []
     for model in available_models:
         if model_pattern.lower() in model.lower():
@@ -95,8 +95,8 @@ def fuzzy_match_model(model_pattern, available_models):
 
 def extract_answers_with_quality_check(question_data, model_patterns):
     """
-    从问题数据中提取指定模型模式的答案，并进行质量检查
-    返回: (答案列表, 找到的模型列表, 质量问题列表)
+    Extract answers of specified model patterns from question data and perform quality checks
+    Return: (list of answers, list of found models, list of quality issues)
     """
     answers = []
     found_models = []
@@ -106,19 +106,19 @@ def extract_answers_with_quality_check(question_data, model_patterns):
         available_models = list(question_data["answers"].keys())
         
         for pattern in model_patterns:
-            # 使用模糊匹配找到符合模式的模型
+            # Use fuzzy matching to find models that match the pattern
             matched_models = fuzzy_match_model(pattern, available_models)
             
-            # 从匹配的模型中选择第一个有效答案
+            # Select the first valid answer from the matched models
             found_valid = False
             for model in matched_models:
                 if model in question_data["answers"]:
                     model_answers = question_data["answers"][model]
                     if model_answers and len(model_answers) > 0:
-                        # 只取第一个答案
+                        # Only take the first answer
                         answer_text = model_answers[0].get("answer", "").strip()
                         
-                        # 质量检查
+                        # Quality check
                         is_quality_good, issue_desc = check_answer_quality(answer_text)
                         
                         if is_quality_good:
@@ -133,66 +133,66 @@ def extract_answers_with_quality_check(question_data, model_patterns):
                                 "answer_preview": answer_text[:50] + "..." if len(answer_text) > 50 else answer_text
                             })
             
-            # 如果这个模式没有找到合格的答案，记录问题
+            # If no qualified answer is found for this pattern, record the problem
             if not found_valid:
                 quality_issues.append({
                     "model_pattern": pattern,
-                    "issue": "未找到质量合格的答案"
+                    "issue": "No qualified answer found"
                 })
     
     return answers, found_models, quality_issues
 
 def build_records(questions_data, prompt_template, combo_name, model_patterns):
-    """为单个组合构造记录列表，包含质量检查"""
+    """Construct record list for a single combination, including quality checks"""
     rows = []
     combo_count = 0
     skipped_count = 0
     quality_issues_summary = {}
     
-    print(f"\n  开始质量检查...")
+    print(f"\n  Starting quality check...")
     
     for question, question_data in questions_data.items():
-        # 提取当前组合模型的答案并进行质量检查
+        # Extract answers of the current combination models and perform quality checks
         answers, found_models, quality_issues = extract_answers_with_quality_check(
             question_data, model_patterns
         )
         
-        # 记录质量问题
+        # Record quality issues
         if quality_issues:
             quality_issues_summary[question] = quality_issues
         
-        # 新的prompt格式需要至少2个质量合格的答案
+        # The new prompt format requires at least 2 quality-qualified answers
         if len(answers) < 2:
             skipped_count += 1
             continue
         
-        # 生成 prompt
+        # Generate prompt
         try:
             if len(answers) >= 2:
                 prompt = prompt_template.format(q=question, A1=answers[0], A2=answers[1])
             else:
                 continue
         except KeyError as e:
-            # 如果模板格式不匹配，尝试旧格式
-            ctx = "\n".join(f"回答{i+1}：{ans}" for i, ans in enumerate(answers[:2]))
+            # If the template format does not match, try the old format
+            ctx = "\n".join(f"Answer {i+1}: {ans}" for i, ans in enumerate(answers[:2]))
             try:
                 prompt = prompt_template.format(q=question, ctx=ctx)
             except:
-                print(f"  ⚠️ 警告：prompt模板格式不匹配，跳过问题：{question[:50]}...")
+                print(f"  ⚠️ Warning: Prompt template format does not match, skipping question: {question[:50]}...")
                 skipped_count += 1
                 continue
         
-        # 构建记录
+        # Build record
         record = {
             "question": question,
             "prompt": prompt,
             "model": ",".join(found_models[:2]),
             "version": f"{combo_name}_{min(len(answers), 2)}_answers",
             "combination": combo_name,
-            "answer_quality": "checked"  # 标记已通过质量检查
+            "answer_quality": "checked"  # Marked as passed quality check
         }
         
-        # 如果有第三个答案
+        # If there is a third answer
         if len(answers) >= 3 and len(found_models) >= 3:
             record["third_model"] = found_models[2]
             record["third_answer"] = answers[2]
@@ -200,15 +200,15 @@ def build_records(questions_data, prompt_template, combo_name, model_patterns):
         rows.append(record)
         combo_count += 1
     
-    print(f"  · {combo_name} 生成 {combo_count} 条记录")
-    print(f"  · 因质量问题跳过 {skipped_count} 条记录")
+    print(f"  · {combo_name} generated {combo_count} records")
+    print(f"  · Skipped {skipped_count} records due to quality issues")
     
-    # 如果有质量问题，输出详细报告
+    # If there are quality issues, output a detailed report
     if quality_issues_summary:
         issue_count = len(quality_issues_summary)
-        print(f"  · 发现 {issue_count} 个问题存在质量问题")
+        print(f"  · Found {issue_count} questions with quality issues")
         
-        # 保存质量问题报告
+        # Save quality issue report
         quality_report_file = OUTPUT_DIR / f"quality_report_{combo_name}.json"
         with quality_report_file.open("w", encoding="utf-8") as f:
             json.dump({
@@ -219,69 +219,69 @@ def build_records(questions_data, prompt_template, combo_name, model_patterns):
                 "generated_prompts": combo_count,
                 "quality_issues": quality_issues_summary
             }, f, ensure_ascii=False, indent=2)
-        print(f"  · 质量报告已保存到: {quality_report_file}")
+        print(f"  · Quality report saved to: {quality_report_file}")
     
     return rows
 
-# === 6. 主程序 ===
-print("📖 开始处理数据...")
-print(f"📁 输出目录: {OUTPUT_DIR}")
+# === 6. Main Program ===
+print("📖 Starting data processing...")
+print(f"📁 Output directory: {OUTPUT_DIR}")
 
-# 确保输出目录存在
+# Ensure output directory exists
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# 读取 prompt 模板
+# Read prompt template
 prompt_template = load_prompt_template()
 
-# 读取 JSON 数据
-print(f"\n📖 读取 JSON 文件：{json_path}")
+# Read JSON data
+print(f"\n📖 Reading JSON file: {json_path}")
 try:
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
     
-    # 检查数据结构
+    # Check data structure
     if "questions" in data:
         questions_data = data["questions"]
-        print(f"  · 找到 {len(questions_data)} 个问题")
+        print(f"  · Found {len(questions_data)} questions")
     else:
-        print("❌ 错误：JSON文件中没有找到 'questions' 字段")
+        print("❌ Error: 'questions' field not found in JSON file")
         exit(1)
         
 except FileNotFoundError:
-    print(f"❌ 错误：找不到文件 {json_path}")
+    print(f"❌ Error: File not found {json_path}")
     exit(1)
 except json.JSONDecodeError as e:
-    print(f"❌ 错误：JSON解析失败：{e}")
+    print(f"❌ Error: JSON parsing failed: {e}")
     exit(1)
 
-# === 7. 生成记录并写入 JSON ===
-print("\n⚙️ 生成 prompt 记录...")
+# === 7. Generate Records and Write to JSON ===
+print("\n⚙️ Generating prompt records...")
 
 total_count = 0
 total_skipped = 0
 
-# 为每个组合生成独立的JSON文件
+# Generate independent JSON files for each combination
 for combo_name, model_patterns in MODEL_COMBINATIONS.items():
-    print(f"\n📋 处理组合 {combo_name}: {', '.join(model_patterns)}")
+    print(f"\n📋 Processing combination {combo_name}: {', '.join(model_patterns)}")
     
-    # 生成当前组合的记录
+    # Generate records for the current combination
     combo_rows = build_records(questions_data, prompt_template, combo_name, model_patterns)
     
     if combo_rows:
-        # 为每个组合创建独立的JSON文件
+        # Create an independent JSON file for each combination
         out_json = OUTPUT_DIR / f"{OUTPUT_FILE_PREFIX}_{combo_name}_{OUTPUT_FILE_SUFFIX}.json"
         
-        # 写入JSON文件
-        print(f"📝 写入 JSON 文件：{out_json}")
+        # Write to JSON file
+        print(f"📝 Writing to JSON file: {out_json}")
         with out_json.open("w", encoding="utf-8") as f:
             json.dump(combo_rows, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ 成功写入 {len(combo_rows)} 条记录到 {out_json.name}")
+        print(f"✅ Successfully wrote {len(combo_rows)} records to {out_json.name}")
         total_count += len(combo_rows)
     else:
-        print(f"⚠️ 警告：{combo_name} 没有生成任何记录（所有答案都未通过质量检查）")
+        print(f"⚠️ Warning: {combo_name} did not generate any records (all answers failed quality checks)")
 
-# 生成总体统计报告
+# Generate overall statistics report
 summary_file = OUTPUT_DIR / f"{OUTPUT_FILE_PREFIX}_summary_{OUTPUT_FILE_SUFFIX}.json"
 with summary_file.open("w", encoding="utf-8") as f:
     json.dump({
@@ -294,6 +294,6 @@ with summary_file.open("w", encoding="utf-8") as f:
         "timestamp": datetime.now().isoformat()
     }, f, ensure_ascii=False, indent=2)
 
-print(f"\n📊 总计生成 {total_count} 条记录，分布在 {len(MODEL_COMBINATIONS)} 个文件中")
-print(f"📊 总体统计已保存到: {summary_file}")
-print("\n🎉 完成！")
+print(f"\n📊 Total {total_count} records generated, distributed across {len(MODEL_COMBINATIONS)} files")
+print(f"📊 Overall statistics saved to: {summary_file}")
+print("\n🎉 Completed!")
