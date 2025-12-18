@@ -1,7 +1,10 @@
-######Folder introduction
+### Folder introduction
 ### The scripts in the "project - prepare" folder are for pre - processing cross - domain problems.
 ### The scripts in the "2+1" folder are for the innovative solution proposed: Serial Model.
 ### The scripts in the "3 + 1" folder are for the innovative solution proposed: Summary Model.
+
+
+### Experimental Setup
 
 CUDA_VISIBLE_DEVICES=0 swift infer   --model Qwen/Qwen2.5-7B-Instruct   --torch_dtype bfloat16   --max_length 2048   --system 'You are a helpful assistant.'   --stream true
 
