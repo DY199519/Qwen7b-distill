@@ -32,7 +32,7 @@ files_to_merge = [
 # output file path
 output_file = BASE_DIR_2 / "grades-3+1-1-9400.json"
 
-# aotumatically generate
+# automatically generate
 incomplete_output_file = BASE_DIR_2 / "incomplete_questions1-3600.json"
 
 # ==============================================
@@ -55,7 +55,7 @@ save_incomplete_separately = True
 
 def load_json_files(file_paths: List[str]) -> List[Dict]:
     """
-        loading multiply JSON
+        loading multiple JSON files
     
     Args:
         file_paths: 
@@ -70,7 +70,7 @@ def load_json_files(file_paths: List[str]) -> List[Dict]:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 json_data.append(data)
-                print(f"successfully load: {file_path}")
+                print(f"successfully loaded: {file_path}")
         except FileNotFoundError:
             print(f"ERROR: The file {file_path} does not exist.")
             sys.exit(1)
@@ -100,30 +100,30 @@ def detect_merge_type(json_data: List[Dict]) -> str:
     if not json_data:
         return 'unknown'
     
-    # 检查第一个数据的类型
+    # Check the type of the first data entry
     first_data = json_data[0]
     
-    # 情况1: 数据是字典列表 [{dict1, dict2}, {dict3, dict4}]
+    # Case 1: Data is a list of dictionaries [{dict1, dict2}, {dict3, dict4}]
     if isinstance(first_data, list) and all(isinstance(item, dict) for item in first_data):
-        # 验证所有数据都是字典列表
+        # Verify all data entries are lists of dictionaries
         if all(isinstance(data, list) and all(isinstance(item, dict) for item in data) for data in json_data):
             return 'list'
     
-    # 情况2: 数据是包含statistics和detailed_results的评分文件
+    # Case 2: Data is a grading file containing statistics and detailed_results
     elif isinstance(first_data, dict) and 'statistics' in first_data and 'detailed_results' in first_data:
-        # 验证所有数据都包含这两个字段
+        # Verify all data entries contain these two fields
         if all(isinstance(data, dict) and 'statistics' in data and 'detailed_results' in data for data in json_data):
             return 'grade'
     
-    # 情况3: 数据是包含detailed_results字段的字典（但不是grade文件）
+    # Case 3: Data is a dictionary containing the detailed_results field (but not a grade file)
     elif isinstance(first_data, dict) and 'detailed_results' in first_data:
-        # 验证所有数据都包含detailed_results字段
+        # Verify all data entries contain the detailed_results field
         if all(isinstance(data, dict) and 'detailed_results' in data for data in json_data):
             return 'detailed_results'
     
-    # 情况4: 数据是包含questions字段的字典
+    # Case 4: Data is a dictionary containing the questions field
     elif isinstance(first_data, dict) and 'questions' in first_data:
-        # 验证所有数据都包含questions字段
+        # Verify all data entries contain the questions field
         if all(isinstance(data, dict) and 'questions' in data for data in json_data):
             return 'questions'
     
@@ -132,21 +132,21 @@ def detect_merge_type(json_data: List[Dict]) -> str:
 
 def fuzzy_match_model(model_name: str, required_models: List[str]) -> bool:
     """
-    使用模糊匹配检查模型名称是否匹配必需的模型
+    Check if model name matches required models using fuzzy matching
     
     Args:
-        model_name: 要检查的模型名称
-        required_models: 必需的模型列表
+        model_name: Model name to check
+        required_models: List of required models
         
     Returns:
-        是否匹配
+        Whether there is a match
     """
     model_name_lower = model_name.lower().strip()
     
     for required_model in required_models:
         required_model_lower = required_model.lower().strip()
         
-        # 检查各种可能的匹配情况
+        # Check various possible matching scenarios
         if (required_model_lower in model_name_lower or 
             model_name_lower in required_model_lower or
             required_model_lower.replace('-', '') in model_name_lower.replace('-', '') or
@@ -158,14 +158,14 @@ def fuzzy_match_model(model_name: str, required_models: List[str]) -> bool:
 
 def check_model_answers(questions_dict: Dict[str, Dict], required_models: List[str]) -> Tuple[bool, List[Dict], Dict[str, Dict]]:
     """
-    检查每个问题是否包含所有必需的模型答案（使用模糊匹配）
+    Check if each question contains answers from all required models (using fuzzy matching)
     
     Args:
-        questions_dict: 问题字典
-        required_models: 必需的模型列表
+        questions_dict: Question dictionary
+        required_models: List of required models
         
     Returns:
-        (是否所有问题都符合要求, 缺失信息列表, 不完整的问题字典)
+        (Whether all questions meet requirements, list of missing information, dictionary of incomplete questions)
     """
     missing_info = []
     incomplete_questions = {}
@@ -175,7 +175,7 @@ def check_model_answers(questions_dict: Dict[str, Dict], required_models: List[s
         if 'answers' not in question_data:
             missing_info.append({
                 'question': question,
-                'issue': '缺少answers字段',
+                'issue': 'Missing answers field',
                 'missing_models': required_models
             })
             all_valid = False
@@ -184,7 +184,7 @@ def check_model_answers(questions_dict: Dict[str, Dict], required_models: List[s
         
         existing_models = list(question_data['answers'].keys())
         
-        # 检查每个必需的模型是否有匹配
+        # Check if each required model has a match
         missing_models = []
         for required_model in required_models:
             found = False
@@ -198,7 +198,7 @@ def check_model_answers(questions_dict: Dict[str, Dict], required_models: List[s
         if missing_models:
             missing_info.append({
                 'question': question,
-                'issue': '缺少部分模型答案',
+                'issue': 'Missing answers from some models',
                 'missing_models': missing_models,
                 'existing_models': existing_models
             })
@@ -210,14 +210,14 @@ def check_model_answers(questions_dict: Dict[str, Dict], required_models: List[s
 
 def separate_complete_incomplete_questions(questions_dict: Dict[str, Dict], required_models: List[str]) -> Tuple[Dict[str, Dict], Dict[str, Dict]]:
     """
-    将问题分为完整和不完整两部分（使用模糊匹配）
+    Separate questions into complete and incomplete (using fuzzy matching)
     
     Args:
-        questions_dict: 原始问题字典
-        required_models: 必需的模型列表
+        questions_dict: Original question dictionary
+        required_models: List of required models
         
     Returns:
-        (完整的问题字典, 不完整的问题字典)
+        (Dictionary of complete questions, Dictionary of incomplete questions)
     """
     complete_questions = {}
     incomplete_questions = {}
@@ -229,7 +229,7 @@ def separate_complete_incomplete_questions(questions_dict: Dict[str, Dict], requ
         
         existing_models = list(question_data['answers'].keys())
         
-        # 检查每个必需的模型是否有匹配
+        # Check if each required model has a match
         missing_models = []
         for required_model in required_models:
             found = False
@@ -250,13 +250,13 @@ def separate_complete_incomplete_questions(questions_dict: Dict[str, Dict], requ
 
 def merge_dict_lists(json_data: List[List[Dict]]) -> List[Dict]:
     """
-    合并字典列表
+    Merge lists of dictionaries
     
     Args:
-        json_data: 字典列表的列表
+        json_data: List of lists of dictionaries
         
     Returns:
-        合并后的字典列表
+        Merged list of dictionaries
     """
     merged_list = []
     
@@ -268,13 +268,13 @@ def merge_dict_lists(json_data: List[List[Dict]]) -> List[Dict]:
 
 def calculate_score_distribution(detailed_results: List[Dict]) -> Dict[str, int]:
     """
-    计算分数分布
+    Calculate score distribution
     
     Args:
-        detailed_results: 详细结果列表
+        detailed_results: List of detailed results
         
     Returns:
-        分数分布字典
+        Score distribution dictionary
     """
     distribution = {
         "0-20": 0,
@@ -287,7 +287,7 @@ def calculate_score_distribution(detailed_results: List[Dict]) -> Dict[str, int]
         if 'avg_score_100' in result:
             score = result['avg_score_100']
         elif 'avg_scores' in result and 'total' in result['avg_scores']:
-            score = result['avg_scores']['total'] * 2  # 转换为100分制
+            score = result['avg_scores']['total'] * 2  # Convert to 100-point scale
         else:
             continue
             
@@ -305,37 +305,37 @@ def calculate_score_distribution(detailed_results: List[Dict]) -> Dict[str, int]
 
 def merge_grade_files(json_data: List[Dict]) -> Dict:
     """
-    合并包含statistics和detailed_results的评分文件
+    Merge grade files containing statistics and detailed_results
     
     Args:
-        json_data: 包含statistics和detailed_results的字典列表
+        json_data: List of dictionaries containing statistics and detailed_results
         
     Returns:
-        合并后的字典
+        Merged dictionary
     """
     if not json_data:
         return {}
     
-    # 使用第一个字典作为基础
+    # Use the first dictionary as the base
     merged_dict = json_data[0].copy()
     merged_detailed_results = []
     
-    # 合并所有detailed_results
+    # Merge all detailed_results
     for data in json_data:
         if 'detailed_results' in data and isinstance(data['detailed_results'], list):
             merged_detailed_results.extend(data['detailed_results'])
     
-    # 更新merged_dict
+    # Update merged_dict
     merged_dict['detailed_results'] = merged_detailed_results
     
-    # 重新计算统计信息
+    # Recalculate statistics
     if 'statistics' in merged_dict:
         stats = merged_dict['statistics']
         
-        # 重新计算总问题数
+        # Recalculate total number of questions
         stats['total_questions'] = len(merged_detailed_results)
         
-        # 统计有效评分
+        # Count valid grades
         valid_count = 0
         total_scores = []
         
@@ -347,18 +347,18 @@ def merge_grade_files(json_data: List[Dict]) -> Dict:
         stats['valid_grades'] = valid_count
         stats['failed_grades'] = stats['total_questions'] - valid_count
         
-        # 重新计算平均分
+        # Recalculate average score
         if total_scores:
             stats['total_average'] = sum(total_scores) / len(total_scores)
             stats['total_average_100'] = stats['total_average'] * 2
         
-        # 重新计算分数分布
+        # Recalculate score distribution
         stats['score_distribution'] = calculate_score_distribution(merged_detailed_results)
         
-        # 更新完成时间
+        # Update completion time
         stats['completion_time'] = datetime.now().isoformat()
         
-        # 如果有field_statistics，也更新它
+        # Update field_statistics if present
         if 'field_statistics' in stats:
             for field_name in stats['field_statistics']:
                 stats['field_statistics'][field_name]['count'] = valid_count
@@ -374,39 +374,39 @@ def merge_grade_files(json_data: List[Dict]) -> Dict:
 
 def merge_questions(json_data: List[Dict]) -> Dict:
     """
-    合并包含questions字段的字典
+    Merge dictionaries containing the questions field
     
     Args:
-        json_data: 包含questions字段的字典列表
+        json_data: List of dictionaries containing the questions field
         
     Returns:
-        合并后的字典
+        Merged dictionary
     """
     if not json_data:
         return {}
     
-    # 使用第一个字典作为基础
+    # Use the first dictionary as the base
     merged_dict = json_data[0].copy()
     merged_questions = merged_dict.get('questions', {}).copy()
     
-    # 合并所有questions
-    for data in json_data[1:]:  # 从第二个开始，因为第一个已经作为基础
+    # Merge all questions
+    for data in json_data[1:]:  # Start from the second one since the first is used as base
         if 'questions' in data and isinstance(data['questions'], dict):
             for question_key, question_data in data['questions'].items():
                 if question_key in merged_questions:
-                    # 如果问题已存在，需要合并answers
+                    # If question exists, need to merge answers
                     if 'answers' in merged_questions[question_key] and 'answers' in question_data:
-                        # 合并answers字典
+                        # Merge answers dictionary
                         merged_questions[question_key]['answers'].update(question_data['answers'])
-                    # 保留其他字段（如categories等）
+                    # Preserve other fields (like categories, etc.)
                     for key, value in question_data.items():
                         if key != 'answers':
                             merged_questions[question_key][key] = value
                 else:
-                    # 如果问题不存在，直接添加
+                    # If question doesn't exist, add it directly
                     merged_questions[question_key] = question_data.copy()
     
-    # 更新merged_dict
+    # Update merged_dict
     merged_dict['questions'] = merged_questions
     
     return merged_dict
@@ -414,21 +414,21 @@ def merge_questions(json_data: List[Dict]) -> Dict:
 
 def rename_default_fields(data: Union[List[Dict], Dict]) -> Union[List[Dict], Dict]:
     """
-    重命名default_reply和default_prompt字段为combination_1格式
+    Rename default_reply and default_prompt fields to combination_1 format
     
     Args:
-        data: 需要处理的数据
+        data: Data to process
         
     Returns:
-        处理后的数据
+        Processed data
     """
     if isinstance(data, list):
         return [rename_default_fields(item) for item in data]
     elif isinstance(data, dict):
-        # 处理字典
+        # Process dictionary
         processed_dict = {}
         
-        # 处理字段重命名
+        # Handle field renaming
         for key, value in data.items():
             if key == 'default_reply':
                 new_key = "combination_1_reply"
@@ -437,7 +437,7 @@ def rename_default_fields(data: Union[List[Dict], Dict]) -> Union[List[Dict], Di
                 new_key = "combination_1_prompt"
                 processed_dict[new_key] = value
             else:
-                # 递归处理嵌套的字典或列表
+                # Recursively process nested dictionaries or lists
                 processed_dict[key] = rename_default_fields(value)
         
         return processed_dict
@@ -447,31 +447,31 @@ def rename_default_fields(data: Union[List[Dict], Dict]) -> Union[List[Dict], Di
 
 def save_json(data: Union[List[Dict], Dict], output_path: str) -> None:
     """
-    保存JSON数据到文件
+    Save JSON data to file
     
     Args:
-        data: 要保存的数据
-        output_path: 输出文件路径
+        data: Data to save
+        output_path: Output file path
     """
     try:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"合并结果已保存到: {output_path}")
+        print(f"Merge results saved to: {output_path}")
     except Exception as e:
-        print(f"错误: 保存文件时发生错误: {e}")
+        print(f"Error: An error occurred while saving the file: {e}")
         sys.exit(1)
 
 
 def save_incomplete_questions(incomplete_questions: Dict[str, Dict], incomplete_info: List[Dict], output_path: str) -> None:
     """
-    保存不完整的问题到单独的JSON文件
+    Save incomplete questions to a separate JSON file
     
     Args:
-        incomplete_questions: 不完整的问题字典
-        incomplete_info: 缺失信息列表
-        output_path: 输出文件路径
+        incomplete_questions: Dictionary of incomplete questions
+        incomplete_info: List of missing information
+        output_path: Output file path
     """
-    # 创建包含详细信息的数据结构
+    # Create data structure containing detailed information
     incomplete_data = {
         "metadata": {
             "generated_at": datetime.now().isoformat(),
@@ -486,29 +486,29 @@ def save_incomplete_questions(incomplete_questions: Dict[str, Dict], incomplete_
     try:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(incomplete_data, f, ensure_ascii=False, indent=2)
-        print(f"不完整的问题已保存到: {output_path}")
+        print(f"Incomplete questions saved to: {output_path}")
     except Exception as e:
-        print(f"错误: 保存不完整问题文件时发生错误: {e}")
+        print(f"Error: An error occurred while saving the incomplete questions file: {e}")
 
 
 def main():
     # ==============================================
-    # 主程序逻辑
+    # Main program logic
     # ==============================================
     
-    # 也可以通过命令行参数覆盖配置
-    parser = argparse.ArgumentParser(description='合并多个JSON文件')
-    parser.add_argument('files', nargs='*', help='要合并的JSON文件路径（可选，会覆盖脚本中的配置）')
-    parser.add_argument('-o', '--output', help='输出文件路径（可选，会覆盖脚本中的配置）')
-    parser.add_argument('--preview', action='store_true', help='仅预览合并结果，不保存文件')
-    parser.add_argument('--rename-defaults', action='store_true', help='重命名default_reply和default_prompt字段为第一个combination格式')
-    parser.add_argument('--check-models', action='store_true', help='检查每个问题是否包含所有必需的模型答案')
-    parser.add_argument('--no-check-models', action='store_true', help='跳过模型答案完整性检查')
-    parser.add_argument('--incomplete-output', help='不完整问题的输出文件路径')
+    # Can also override configuration via command line arguments
+    parser = argparse.ArgumentParser(description='Merge multiple JSON files')
+    parser.add_argument('files', nargs='*', help='Paths to JSON files to merge (optional, overrides script configuration)')
+    parser.add_argument('-o', '--output', help='Output file path (optional, overrides script configuration)')
+    parser.add_argument('--preview', action='store_true', help='Only preview merge results, do not save file')
+    parser.add_argument('--rename-defaults', action='store_true', help='Rename default_reply and default_prompt fields to first combination format')
+    parser.add_argument('--check-models', action='store_true', help='Check if each question contains answers from all required models')
+    parser.add_argument('--no-check-models', action='store_true', help='Skip model answer completeness check')
+    parser.add_argument('--incomplete-output', help='Output file path for incomplete questions')
     
     args = parser.parse_args()
     
-    # 使用命令行参数覆盖默认配置（如果提供）
+    # Override default configuration with command line arguments if provided
     if args.files:
         global files_to_merge
         files_to_merge = args.files
@@ -530,189 +530,189 @@ def main():
         global incomplete_output_file
         incomplete_output_file = args.incomplete_output
     
-    # 检查文件数量
+    # Check number of files
     if len(files_to_merge) < 2:
-        print("错误: 请提供2-4个JSON文件")
+        print("Error: Please provide 2-4 JSON files")
         sys.exit(1)
     
-    # 检查文件是否存在
+    # Check if files exist
     for file_path in files_to_merge:
         if not Path(file_path).exists():
-            print(f"错误: 文件 {file_path} 不存在")
+            print(f"Error: File {file_path} does not exist")
             sys.exit(1)
     
-    # 检查是否为multi_model_answer类型文件
+    # Check if files are of multi_model_answer type
     is_multi_model_file = any('multi_model_answer' in str(f) for f in files_to_merge)
     
-    # 检查是否为grade类型文件
+    # Check if files are of grade type
     is_grade_file = any('grade' in str(f).lower() for f in files_to_merge)
     
-    print(f"准备合并 {len(files_to_merge)} 个JSON文件:")
+    print(f"Preparing to merge {len(files_to_merge)} JSON files:")
     for i, file_path in enumerate(files_to_merge, 1):
         print(f"  {i}. {file_path}")
     print()
     
-    # 加载JSON文件
+    # Load JSON files
     json_data = load_json_files(files_to_merge)
     
-    # 统计每个文件的问题数量
+    # Count number of questions in each file
     file_stats = []
     for i, data in enumerate(json_data):
         if isinstance(data, dict) and 'questions' in data:
             question_count = len(data['questions'])
             file_stats.append((files_to_merge[i].name, question_count))
     
-    # 检测合并类型
+    # Detect merge type
     merge_type = detect_merge_type(json_data)
     
     if merge_type == 'unknown':
-        print("错误: 无法识别JSON数据格式。请确保所有文件都是相同的格式：")
-        print("1. 字典列表格式: [{dict1, dict2}, {dict3, dict4}]")
-        print("2. 包含detailed_results字段的字典格式")
-        print("3. 包含questions字段的字典格式")
-        print("4. 包含statistics和detailed_results的评分文件格式")
+        print("Error: Unable to recognize JSON data format. Please ensure all files are in the same format:")
+        print("1. List of dictionaries format: [{dict1, dict2}, {dict3, dict4}]")
+        print("2. Dictionary format containing detailed_results field")
+        print("3. Dictionary format containing questions field")
+        print("4. Grade file format containing statistics and detailed_results")
         sys.exit(1)
     
-    # 执行合并
+    # Perform merge
     if merge_type == 'list':
-        print("检测到字典列表格式，正在合并...")
+        print("Detected list of dictionaries format, merging...")
         merged_result = merge_dict_lists(json_data)
-        print(f"合并完成，共合并了 {len(merged_result)} 个字典项")
+        print(f"Merge completed, merged a total of {len(merged_result)} dictionary items")
         
     elif merge_type == 'grade':
-        print("检测到评分文件格式，正在合并...")
+        print("Detected grade file format, merging...")
         merged_result = merge_grade_files(json_data)
         total_items = len(merged_result.get('detailed_results', []))
         
-        # 打印每个文件的统计信息
-        print("\n📊 文件统计:")
+        # Print statistics for each file
+        print("\n📊 File statistics:")
         for i, data in enumerate(json_data):
             filename = files_to_merge[i].name
             question_count = len(data.get('detailed_results', []))
             avg_score = data.get('statistics', {}).get('total_average_100', 0)
-            print(f"  - {filename}: {question_count} 个问题, 平均分: {avg_score:.2f}")
+            print(f"  - {filename}: {question_count} questions, average score: {avg_score:.2f}")
         
-        # 打印合并后的统计
+        # Print merged statistics
         if 'statistics' in merged_result:
             stats = merged_result['statistics']
-            print(f"\n📊 合并后统计:")
-            print(f"  - 总问题数: {stats['total_questions']}")
-            print(f"  - 有效评分: {stats['valid_grades']}")
-            print(f"  - 平均分: {stats.get('total_average_100', 0):.2f}")
-            print(f"\n📊 分数分布:")
+            print(f"\n📊 Merged statistics:")
+            print(f"  - Total questions: {stats['total_questions']}")
+            print(f"  - Valid grades: {stats['valid_grades']}")
+            print(f"  - Average score: {stats.get('total_average_100', 0):.2f}")
+            print(f"\n📊 Score distribution:")
             for range_key, count in stats['score_distribution'].items():
-                print(f"  - {range_key}: {count} 个")
+                print(f"  - {range_key}: {count} items")
     
     elif merge_type == 'detailed_results':
-        print("检测到包含detailed_results的字典格式，正在合并...")
+        print("Detected dictionary format containing detailed_results, merging...")
         merged_result = merge_detailed_results(json_data)
         total_items = len(merged_result.get('detailed_results', []))
-        print(f"合并完成，detailed_results中共有 {total_items} 个项目")
+        print(f"Merge completed, detailed_results contains {total_items} items")
         
     elif merge_type == 'questions':
-        print("检测到包含questions的字典格式，正在合并...")
+        print("Detected dictionary format containing questions, merging...")
         merged_result = merge_questions(json_data)
         total_questions = len(merged_result.get('questions', {}))
         
-        # 打印每个文件的统计信息
-        print("\n📊 文件统计:")
+        # Print statistics for each file
+        print("\n📊 File statistics:")
         for filename, count in file_stats:
-            print(f"  - {filename}: {count} 个问题")
-        print(f"  - 合并后总计: {total_questions} 个问题")
+            print(f"  - {filename}: {count} questions")
+        print(f"  - Total after merging: {total_questions} questions")
         
-        # 如果是multi_model_answer文件且启用了检查，进行模型完整性检查
+        # If it's a multi_model_answer file and checking is enabled, perform model completeness check
         if is_multi_model_file and check_model_completeness and merge_type == 'questions':
-            print("\n🔍 检查模型答案完整性...")
-            print(f"必需的模型: {', '.join(required_models)}")
+            print("\n🔍 Checking model answer completeness...")
+            print(f"Required models: {', '.join(required_models)}")
             
             all_valid, missing_info, incomplete_questions = check_model_answers(merged_result.get('questions', {}), required_models)
             
             if all_valid:
-                print("\n✅ 所有问题都包含必需的模型答案！")
+                print("\n✅ All questions contain answers from required models!")
             else:
-                print(f"\n⚠️  发现 {len(missing_info)} 个不完整的问题")
+                print(f"\n⚠️  Found {len(missing_info)} incomplete questions")
                 
-                # 简洁显示缺失的问题
-                print("\n不完整问题列表:")
-                for i, info in enumerate(missing_info[:10], 1):  # 只显示前10个
+                # Briefly display missing questions
+                print("\nIncomplete question list:")
+                for i, info in enumerate(missing_info[:10], 1):  # Only show first 10
                     print(f"{i}. {info['question'][:60]}...")
-                    print(f"   缺失: {', '.join(info['missing_models'])}")
+                    print(f"   Missing: {', '.join(info['missing_models'])}")
                 
                 if len(missing_info) > 10:
-                    print(f"\n... 还有 {len(missing_info) - 10} 个不完整的问题")
+                    print(f"\n... and {len(missing_info) - 10} more incomplete questions")
                 
-                # 如果需要将不完整的题目单独保存
+                # If need to save incomplete questions separately
                 if save_incomplete_separately and not preview_only:
-                    # 分离完整和不完整的问题
+                    # Separate complete and incomplete questions
                     complete_questions, incomplete_questions = separate_complete_incomplete_questions(
                         merged_result.get('questions', {}), required_models
                     )
                     
-                    # 更新merged_result，只保留完整的问题
+                    # Update merged_result to only keep complete questions
                     merged_result['questions'] = complete_questions
-                    print(f"\n将把 {len(complete_questions)} 个完整的问题保存到主文件")
-                    print(f"将把 {len(incomplete_questions)} 个不完整的问题保存到单独文件")
+                    print(f"\nWill save {len(complete_questions)} complete questions to main file")
+                    print(f"Will save {len(incomplete_questions)} incomplete questions to separate file")
                     
-                    # 保存不完整的问题
+                    # Save incomplete questions
                     save_incomplete_questions(incomplete_questions, missing_info, incomplete_output_file)
                 
                 if not preview_only and not save_incomplete_separately:
-                    response = input("\n是否继续保存文件（包含不完整的问题）？(y/n): ")
+                    response = input("\nDo you want to continue saving the file (including incomplete questions)? (y/n): ")
                     if response.lower() != 'y':
-                        print("已取消保存操作")
+                        print("Save operation cancelled")
                         sys.exit(0)
     
-    # 重命名default字段（如果需要）
+    # Rename default fields if needed
     if rename_default_fields_flag:
         merged_result = rename_default_fields(merged_result)
     
-    # 预览或保存结果
+    # Preview or save results
     if preview_only:
-        print("\n✅ 预览模式完成")
+        print("\n✅ Preview mode completed")
         print_merge_summary(merged_result, merge_type, len(files_to_merge))
     else:
         save_json(merged_result, output_file)
-        print("\n✅ 合并成功完成！")
+        print("\n✅ Merge completed successfully!")
         print_merge_summary(merged_result, merge_type, len(files_to_merge))
 
 
 def print_merge_summary(merged_result: Union[List[Dict], Dict], merge_type: str, file_count: int):
     """
-    打印合并结果的详细统计信息
+    Print detailed statistics of merge results
     
     Args:
-        merged_result: 合并后的结果
-        merge_type: 合并类型
-        file_count: 合并的文件数量
+        merged_result: Merged result
+        merge_type: Type of merge
+        file_count: Number of merged files
     """
     if merge_type == 'questions':
         questions = merged_result.get('questions', {})
         total_questions = len(questions)
         
-        # 统计模型数量
+        # Count number of models
         model_count = set()
         for question_data in questions.values():
             if 'answers' in question_data:
                 for model_name in question_data['answers'].keys():
                     model_count.add(model_name)
         
-        print(f"\n📊 最终统计:")
-        print(f"  - 合并文件数: {file_count} 个")
-        print(f"  - 总问题数: {total_questions} 个")
-        print(f"  - 涉及模型数: {len(model_count)} 个")
+        print(f"\n📊 Final statistics:")
+        print(f"  - Number of merged files: {file_count}")
+        print(f"  - Total questions: {total_questions}")
+        print(f"  - Number of models involved: {len(model_count)}")
     elif merge_type == 'grade':
         if 'statistics' in merged_result:
             stats = merged_result['statistics']
-            print(f"\n📊 最终统计:")
-            print(f"  - 合并文件数: {file_count} 个")
-            print(f"  - 总问题数: {stats['total_questions']} 个")
-            print(f"  - 有效评分: {stats['valid_grades']} 个")
-            print(f"  - 失败评分: {stats['failed_grades']} 个")
-            print(f"  - 总平均分: {stats.get('total_average_100', 0):.2f} 分")
+            print(f"\n📊 Final statistics:")
+            print(f"  - Number of merged files: {file_count}")
+            print(f"  - Total questions: {stats['total_questions']}")
+            print(f"  - Valid grades: {stats['valid_grades']}")
+            print(f"  - Failed grades: {stats['failed_grades']}")
+            print(f"  - Overall average score: {stats.get('total_average_100', 0):.2f} points")
     else:
-        print(f"\n📊 最终统计:")
-        print(f"  - 合并文件数: {file_count} 个")
-        print(f"  - 数据格式: {merge_type}")
+        print(f"\n📊 Final statistics:")
+        print(f"  - Number of merged files: {file_count}")
+        print(f"  - Data format: {merge_type}")
 
 
 if __name__ == "__main__":
