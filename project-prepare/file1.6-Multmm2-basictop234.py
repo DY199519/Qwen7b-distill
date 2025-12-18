@@ -2,7 +2,7 @@ import csv, json, time
 from pathlib import Path
 from openai import OpenAI
 
-# === 加载已有 basic answers 数据 ===
+# === Load existing basic answers data ===
 def load_existing_answers(grouped_json_path: Path) -> dict:
     if not grouped_json_path.exists():
         return {}
@@ -24,11 +24,11 @@ def run_model_batch(
     output_json: Path,
     grouped_answers_path: Path
 ):
-    # 初始化客户端
+    # Initialize client
     api_client = OpenAI(api_key=api_key, base_url=base_url)
     existing_answers = load_existing_answers(grouped_answers_path)
 
-    # === 读取 CSV → version→prompt ===
+    # === Read CSV → version→prompt ===
     groups, questions = {"top2": {}, "top3": {}, "top4": {}}, set()
     with csv_path.open("r", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
@@ -39,7 +39,7 @@ def run_model_batch(
                 questions.add(q)
 
     questions = sorted(list(questions))
-    print(f"📌 模型 {model_name} - 处理问题总数: {len(questions)}")
+    print(f"📌 Model {model_name} - Total number of questions to process: {len(questions)}")
 
     def ask_model(prompt: str, max_retry: int = 3, retry_pause: float = 2.0) -> str:
         for attempt in range(1, max_retry + 1):
@@ -52,21 +52,21 @@ def run_model_batch(
                 if answer:
                     return answer
                 else:
-                    print(f"⚠️ 第 {attempt} 次返回空内容，重试…")
+                    print(f"⚠️ Empty content returned on attempt {attempt}, retrying...")
             except Exception as e:
-                print(f"❌ 第 {attempt} 次请求失败: {e}，重试…")
+                print(f"❌ Request failed on attempt {attempt}: {e}, retrying...")
             time.sleep(retry_pause)
         return ""
 
     result_list = []
     for idx, q in enumerate(questions, 1):
-        print(f"\n[{idx}/{len(questions)}] 处理问题 → {q[:60]}…")
+        print(f"\n[{idx}/{len(questions)}] Processing question → {q[:60]}...")
 
-        # 如果有缓存则直接用
+        # Use cache if available
         direct_prompt = q
         direct_reply = existing_answers.get(q, {}).get(model_name, "")
         if direct_reply:
-            print(f"✅ 使用已有回答")
+            print(f"✅ Using existing answer")
         else:
             direct_reply = ask_model(direct_prompt)
             time.sleep(1.2)
@@ -75,7 +75,7 @@ def run_model_batch(
             ptxt = groups[tag].get(q, "")
             if not ptxt:
                 return ptxt, ""
-            print(f"   ↳ {tag} 回答…")
+            print(f"   ↳ Answering with {tag}...")
             ans = ask_model(ptxt)
             time.sleep(1.2)
             return ptxt, ans
@@ -99,10 +99,10 @@ def run_model_batch(
     with output_json.open("w", encoding="utf-8") as f:
         json.dump(result_list, f, ensure_ascii=False, indent=2)
 
-    print(f"\n🎉 模型 {model_name} 已写入 {len(result_list)} 条数据到 {output_json}")
+    print(f"\n🎉 Model {model_name} has written {len(result_list)} entries to {output_json}")
 
 
-# === 配置 ===
+# === Configuration ===
 csv_file = Path(r"D:\project\final_prompt_contexts.csv")
 grouped_answers_file = Path("D:\project\grouped_answers.json")
 
@@ -127,7 +127,7 @@ model_configs = [
     }
 ]
 
-# === 执行每个模型任务 ===
+# === Execute each model task ===
 for cfg in model_configs:
     run_model_batch(
         model_name=cfg["model_name"],
