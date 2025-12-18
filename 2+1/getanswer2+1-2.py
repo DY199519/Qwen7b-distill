@@ -3,9 +3,9 @@
 """
 multmm2_run2plus2_topic_first_modified.py
 ----------------------------------------
-修改版：从 JSON 格式中提取 third_answer 作为 A1，combination_1_reply 作为 A2
-使用新的提示词模板
-添加答案质量检查功能
+Modified version: Extract third_answer from JSON format as A1, combination_1_reply as A2
+Use new prompt template
+Add answer quality check function
 """
 
 import csv, json, time, re, traceback
@@ -13,123 +13,122 @@ from pathlib import Path
 from openai import OpenAI
 from datetime import datetime
 
-# ===== 0. 输出路径和文件名配置 ======================================================
+# ===== 0. Output path and filename configuration ======================================================
 BASE_DIR   = Path(r"D:\project7\MM\result\2+1")
 BASE_DIR_1   = Path(r"D:\project7\prompt")
-OUTPUT_DIR = Path(r"D:\project7\MM\result\2+1")  # 可以在这里轻松修改输出路径
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR = Path(r"D:\project7\MM\result\2+1")  # You can easily modify the output path here
 
-# ========== 输出文件名配置 - 在这里修改！ ==========
-# 方式1: 使用固定的后缀
-OUTPUT_SUFFIX = "answers_2+1-2-7800-8100"  # 修改这个值来改变输出文件名
+# ========== Output filename configuration - Modify here! ==========
+# Method 1: Use a fixed suffix
+OUTPUT_SUFFIX = "answers_2+1-2-7800-8100"  # Modify this value to change the output filename
 
-# 方式2: 使用时间戳
+# Method 2: Use timestamp
 # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 # OUTPUT_SUFFIX = f"answers_{timestamp}"
 
-# 方式3: 使用完全自定义的名称
-# OUTPUT_FILENAME_TEMPLATE = "{model_name}_融合结果_v2.json"  # {model_name} 会被替换为模型名
+# Method 3: Use fully custom name
+# OUTPUT_FILENAME_TEMPLATE = "{model_name}_fusion_result_v2.json"  # {model_name} will be replaced with the model name
 
-# 方式4: 为每个模型单独指定输出文件名（在 MODEL_CFGS 中添加 output_filename 字段）
+# Method 4: Specify output filename for each model individually (add output_filename field in MODEL_CFGS)
 # ================================================
 
-# 读取包含 combination_1_reply 和 third_answer 的 JSON 文件
-ANSWER_FILE = BASE_DIR / "gemini-2.5-flash_answers_2+1-1-7800-8100.json"  # 包含问题、combination_1_reply 和 third_answer 的文件
-PROMPT_FILE = BASE_DIR_1 / "prompt-2+1-2.txt"  # 提示词模板文件
-SAVE_INTERVAL = 1  # 每 N 题保存一次
+# Read JSON file containing combination_1_reply and third_answer
+ANSWER_FILE = BASE_DIR / "gemini-2.5-flash_answers_2+1-1-7800-8100.json"  # File containing questions, combination_1_reply and third_answer
+PROMPT_FILE = BASE_DIR_1 / "prompt-2+1-2.txt"  # Prompt template file
+SAVE_INTERVAL = 1  # Save every N questions
 
-# ===== 1. 模型账户配置 =======================================================
+# ===== 1. Model account configuration =======================================================
 MODEL_CFGS = [
     {
         "model_name": "doubao-pro-32k",
         "api_key": "sk-TlCq2TfX7oLuXzZMD1A3681285A2460bA26b6f0cEa5517Aa",
         "base_url": "https://vir.vimsai.com/v1",
-        # "output_filename": "doubao_自定义输出.json"  # 可选：为特定模型指定输出文件名
+        # "output_filename": "doubao_custom_output.json"  # Optional: Specify custom filename for specific model
     }
 ]
 
-# ===== 2. 答案质量检查配置 ===================================================
-MIN_ANSWER_LENGTH = 10  # 最小答案长度
-VALID_ENDINGS = ['。', '！', '？', '.', '!', '?', ')', '）', '"', '"', "'", "'"]  # 有效的结尾标点
-MAX_RETRIES = 3  # 最大重试次数
+# ===== 2. Answer quality check configuration ===================================================
+MIN_ANSWER_LENGTH = 10  # Minimum answer length
+VALID_ENDINGS = ['。', '！', '？', '.', '!', '?', ')', '）', '"', '"', "'", "'"]  # Valid ending punctuation marks
+MAX_RETRIES = 3  # Maximum number of retries
 
 def check_answer_quality(answer: str, question: str = ""):
     """
-    检查答案质量
-    返回: (is_valid, error_message)
+    Check answer quality
+    Returns: (is_valid, error_message)
     """
     if not answer or not answer.strip():
-        return False, "答案为空"
+        return False, "Answer is empty"
     
     answer = answer.strip()
     
-    # 检查长度
+    # Check length
     if len(answer) < MIN_ANSWER_LENGTH:
-        return False, f"答案过短（{len(answer)}字符，最少需要{MIN_ANSWER_LENGTH}字符）"
+        return False, f"Answer is too short ({len(answer)} characters, minimum {MIN_ANSWER_LENGTH} required)"
     
-    # 检查是否以合适的标点符号结尾
+    # Check if ends with appropriate punctuation
     if not any(answer.endswith(ending) for ending in VALID_ENDINGS):
-        return False, f"答案可能被截断，结尾字符: '{answer[-1] if answer else 'N/A'}'"
+        return False, f"Answer may be truncated, ending character: '{answer[-1] if answer else 'N/A'}'"
     
-    # 检查是否包含明显的截断标志
+    # Check for obvious truncation signs
     truncation_signs = ['...', '……', '[未完成]', '[截断]', '(未完', '（未完']
     if any(sign in answer for sign in truncation_signs):
-        return False, "答案包含截断标志"
+        return False, "Answer contains truncation signs"
     
-    # 检查答案是否过于重复（可能是生成异常）
+    # Check if answer is overly repetitive (may indicate generation anomaly)
     words = answer.split()
     if len(words) > 5:
         word_freq = {}
         for word in words:
             word_freq[word] = word_freq.get(word, 0) + 1
         max_freq = max(word_freq.values())
-        if max_freq > len(words) * 0.5:  # 如果某个词出现超过50%
-            return False, "答案内容过于重复"
+        if max_freq > len(words) * 0.5:  # If a word appears more than 50% of the time
+            return False, "Answer content is overly repetitive"
     
-    return True, "质量检查通过"
+    return True, "Quality check passed"
 
-# ===== 3. 读取提示词模板 ====================================================
+# ===== 3. Read prompt template ====================================================
 def load_prompt_template(template_path: Path):
-    """读取提示词模板文件"""
+    """Read prompt template file"""
     try:
         with template_path.open("r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception as e:
-        print(f"❌ 读取提示词模板失败: {e}")
-        # 如果读取失败，使用默认模板
-        return """阅读 其他两个模型的总结回答A2 并完善您之前的回答A1。如仍有空缺，可补充你的常识或公开资料，并用括号注明来源（常识／公开资料）。
-问题：
+        print(f"❌ Failed to read prompt template: {e}")
+        # If reading fails, use default template
+        return """Read the summary answer A2 from the other two models and improve your previous answer A1. If there are still gaps, you can supplement with your common knowledge or public information, and indicate the source in parentheses (common knowledge / public information).
+Question:
 {q}
-A1：
+A1:
 {A1}
-A2：
+A2:
 {A2}
-【任务说明】  
-不展示中间提取过程。前面不带任何铺垫性的语句
-【输出要求】  
-- 条理清晰，可使用编号或分段；  
-- 避免赘述，保持简练。"""
+【Task Description】
+Do not show the intermediate extraction process. Do not include any introductory statements at the beginning.
+【Output Requirements】
+- Clear and organized, may use numbering or paragraphing;
+- Avoid redundancy, keep concise."""
 
-# 加载提示词模板
+# Load prompt template
 PROMPT_TEMPLATE = load_prompt_template(PROMPT_FILE)
 
-# ===== 4. 辅助函数 ==========================================================
+# ===== 4. Auxiliary functions ==========================================================
 
 def get_output_filename(model_name: str, cfg: dict):
-    """根据配置生成输出文件名"""
-    # 优先使用模型配置中的自定义文件名
+    """Generate output filename based on configuration"""
+    # Prioritize custom filename in model configuration
     if "output_filename" in cfg:
         return cfg["output_filename"]
     
-    # 使用全局模板（如果定义了）
+    # Use global template (if defined)
     if 'OUTPUT_FILENAME_TEMPLATE' in globals():
         return OUTPUT_FILENAME_TEMPLATE.format(model_name=model_name)
     
-    # 默认使用后缀方式
+    # Default to suffix method
     return f"{model_name}_{OUTPUT_SUFFIX}.json"
 
 def ask(api: OpenAI, model: str, prompt: str, retry: int = 3, pause: int = 2, question: str = ""):
-    """调用API并进行质量检查"""
+    """Call API with quality check"""
     for i in range(retry):
         try:
             rsp = api.chat.completions.create(
@@ -139,24 +138,24 @@ def ask(api: OpenAI, model: str, prompt: str, retry: int = 3, pause: int = 2, qu
             )
             txt = rsp.choices[0].message.content.strip()
             
-            # 进行质量检查
+            # Perform quality check
             is_valid, error_msg = check_answer_quality(txt, question)
             
             if is_valid:
-                print(f"    ✅ 答案质量检查通过（长度: {len(txt)}字符）")
+                print(f"    ✅ Answer quality check passed (length: {len(txt)} characters)")
                 return txt
             else:
-                print(f"    ⚠️ 第 {i+1} 次尝试质量检查失败: {error_msg}")
-                if i < retry - 1:  # 如果不是最后一次尝试
-                    print(f"    🔄 将重试...")
+                print(f"    ⚠️ Quality check failed on attempt {i+1}: {error_msg}")
+                if i < retry - 1:  # If not the last attempt
+                    print(f"    🔄 Retrying...")
                     time.sleep(pause)
                     continue
                 else:
-                    print(f"    ❌ 达到最大重试次数，仍返回当前答案")
-                    return txt  # 即使质量不佳也返回，避免完全失败
+                    print(f"    ❌ Reached maximum retries, returning current answer")
+                    return txt  # Return even if quality is poor to avoid complete failure
                     
         except Exception as e:
-            print(f"❌ {model} 第 {i+1} 次API调用失败: {e}")
+            print(f"❌ {model} API call failed on attempt {i+1}: {e}")
             if i < retry - 1:
                 time.sleep(pause)
     
@@ -170,41 +169,41 @@ def load_progress(file: Path):
             data = json.load(f)
         return {row["question"]: row for row in data}
     except Exception as e:
-        print(f"⚠️ 读取进度失败: {e}")
+        print(f"⚠️ Failed to read progress: {e}")
         return {}
 
 def save_progress(done_dict: dict, file: Path):
-    """保存进度，只保存 done 字典中的记录"""
+    """Save progress, only save records in done dictionary"""
     try:
         rows = list(done_dict.values())
         tmp = file.with_suffix(".tmp")
         tmp.write_text(json.dumps(rows, ensure_ascii=False, indent=2), "utf-8")
         tmp.replace(file)
-        print(f"💾 保存 {file.name} （{len(rows)} 条）")
+        print(f"💾 Saved {file.name} ({len(rows)} entries)")
     except Exception as e:
-        print(f"❌ 保存失败: {e}")
+        print(f"❌ Save failed: {e}")
 
 def load_answer_data(answer_path: Path):
-    """读取包含问题、combination_1_reply 和 third_answer 的 JSON 文件"""
+    """Read JSON file containing questions, combination_1_reply and third_answer"""
     q2data = {}
     
-    # 检查文件是否存在
+    # Check if file exists
     if not answer_path.exists():
-        print(f"❌ 文件不存在: {answer_path}")
+        print(f"❌ File does not exist: {answer_path}")
         return q2data
         
     with answer_path.open("r", encoding="utf-8") as f:
-        # 判断文件是 JSON 数组还是 JSON lines
+        # Determine if file is JSON array or JSON lines
         first_char = f.read(1)
         f.seek(0)
         if first_char == "[":
-            # JSON 数组
+            # JSON array
             entries = json.load(f)
         else:
             # JSON lines
             entries = [json.loads(line) for line in f if line.strip()]
     
-    print(f"📖 读取到 {len(entries)} 条记录")
+    print(f"📖 Read {len(entries)} records")
     
     for i, entry in enumerate(entries):
         try:
@@ -213,19 +212,19 @@ def load_answer_data(answer_path: Path):
             third_answer = entry.get("third_answer", "")
             third_model = entry.get("third_model", "")
             
-            # 调试信息
-            if i == 0:  # 只打印第一条记录的字段信息
-                print(f"🔍 第一条记录的字段: {list(entry.keys())}")
+            # Debug information
+            if i == 0:  # Only print field information for the first record
+                print(f"🔍 Fields of first record: {list(entry.keys())}")
                 if "third_answer" in entry:
-                    print(f"   ✓ 找到 third_answer (长度: {len(third_answer)})")
+                    print(f"   ✓ Found third_answer (length: {len(third_answer)})")
                 else:
-                    print(f"   ❌ 未找到 third_answer")
+                    print(f"   ❌ third_answer not found")
                 if "combination_1_reply" in entry:
-                    print(f"   ✓ 找到 combination_1_reply (长度: {len(combination_reply)})")
+                    print(f"   ✓ Found combination_1_reply (length: {len(combination_reply)})")
                 else:
-                    print(f"   ❌ 未找到 combination_1_reply")
+                    print(f"   ❌ combination_1_reply not found")
             
-            # 只有当两个答案都存在时才加入
+            # Only add if both answers exist
             if combination_reply and third_answer:
                 q2data[q] = {
                     "combination_reply": combination_reply,  # A2
@@ -233,32 +232,32 @@ def load_answer_data(answer_path: Path):
                     "third_model": third_model
                 }
             else:
-                if i < 3:  # 只打印前几条的警告信息
-                    print(f"⚠️ 第 {i+1} 条记录缺少必要字段: combination_reply={bool(combination_reply)}, third_answer={bool(third_answer)}")
+                if i < 3:  # Only print warning for first few entries
+                    print(f"⚠️ Record {i+1} missing required fields: combination_reply={bool(combination_reply)}, third_answer={bool(third_answer)}")
                     
         except KeyError as e:
-            print(f"⚠️ 第 {i+1} 条记录缺少字段 {e}: {list(entry.keys())}")
+            print(f"⚠️ Record {i+1} missing field {e}: {list(entry.keys())}")
             continue
     
-    print(f"✅ 成功加载 {len(q2data)} 个问题的数据")
+    print(f"✅ Successfully loaded data for {len(q2data)} questions")
     return q2data
 
-# ===== 5. 脚本入口 ==========================================================
+# ===== 5. Script entry point ==========================================================
 if __name__ == "__main__":
-    # 0) 检查模板文件是否存在
+    # 0) Check if template file exists
     if not PROMPT_FILE.exists():
-        print(f"⚠️ 提示词模板文件不存在: {PROMPT_FILE}")
-        print("📝 请创建 prompt-2+1-2.txt 文件，包含 {q}、{A1} 和 {A2} 占位符")
+        print(f"⚠️ Prompt template file does not exist: {PROMPT_FILE}")
+        print("📝 Please create prompt-2+1-2.txt file containing {q}, {A1} and {A2} placeholders")
     else:
-        print(f"✅ 已加载提示词模板: {PROMPT_FILE}")
-        print(f"📋 答案质量检查配置: 最小长度={MIN_ANSWER_LENGTH}, 最大重试={MAX_RETRIES}")
+        print(f"✅ Loaded prompt template: {PROMPT_FILE}")
+        print(f"📋 Answer quality check configuration: Minimum length={MIN_ANSWER_LENGTH}, Maximum retries={MAX_RETRIES}")
     
-    # 1) 读取答案数据
+    # 1) Read answer data
     q2data = load_answer_data(ANSWER_FILE)
     all_questions = sorted(q2data.keys())
-    print(f"📚 题目数: {len(all_questions)}")
+    print(f"📚 Number of questions: {len(all_questions)}")
     
-    # 2) 为每个模型准备 API、进度文件、行缓存
+    # 2) Prepare API, progress files, and caches for each model
     model_env = {}
     for cfg in MODEL_CFGS:
         name = cfg["model_name"]
@@ -270,24 +269,24 @@ if __name__ == "__main__":
             "out": output_path,
             "done": load_progress(output_path),
         }
-        # 打印已有进度
+        # Print existing progress
         existing_count = len(model_env[name]["done"])
         if existing_count > 0:
-            print(f"📊 {name} 已有进度: {existing_count} 题")
-        print(f"📄 {name} 输出文件: {output_filename}")
+            print(f"📊 {name} existing progress: {existing_count} questions")
+        print(f"📄 {name} output file: {output_filename}")
     
     processed = 0
     skipped = 0
     quality_failures = 0
     
-    # ------- 主循环：题目优先 -----------------
+    # ------- Main loop: Question priority -----------------
     for qi, q in enumerate(all_questions, 1):
         print(f"\n📝 [{qi}/{len(all_questions)}] {q[:60]}…")
         
-        # 获取该问题的数据
+        # Get data for this question
         data = q2data[q]
-        a1 = data["third_answer"]  # third_answer 作为 A1
-        a2 = data["combination_reply"]  # combination_1_reply 作为 A2
+        a1 = data["third_answer"]  # third_answer as A1
+        a2 = data["combination_reply"]  # combination_1_reply as A2
         source_model = data["third_model"]
         
         question_processed = False
@@ -296,30 +295,30 @@ if __name__ == "__main__":
             mname = cfg["model_name"]
             env = model_env[mname]
             
-            # 已有则跳过
+            # Skip if already processed
             if q in env["done"]:
-                print(f"  ⏭️ {mname} 已处理过，跳过")
+                print(f"  ⏭️ {mname} already processed, skipping")
                 skipped += 1
                 continue
             
             api = env["api"]
             
-            print(f"  🤖 调用 {mname}")
+            print(f"  🤖 Calling {mname}")
             
-            # 使用新模板构建 prompt
+            # Build prompt using new template
             prompt = PROMPT_TEMPLATE.format(q=q, A1=a1, A2=a2)
             
-            # 调用模型（已包含质量检查）
+            # Call model (includes quality check)
             reply = ask(api, mname, prompt, question=q)
             
-            # 记录质量检查结果
+            # Record quality check result
             if reply:
                 is_valid, quality_msg = check_answer_quality(reply, q)
                 if not is_valid:
                     quality_failures += 1
-                    print(f"    ⚠️ 最终答案质量问题: {quality_msg}")
+                    print(f"    ⚠️ Final answer quality issue: {quality_msg}")
             
-            # 保存结果
+            # Save result
             item = {
                 "question": q,
                 "third_model": source_model,
@@ -327,10 +326,10 @@ if __name__ == "__main__":
                 "A2_combination_reply": a2,
                 "fusion_prompt": prompt,
                 "fusion_reply": reply,
-                "quality_check": check_answer_quality(reply, q)[1] if reply else "生成失败"
+                "quality_check": check_answer_quality(reply, q)[1] if reply else "Generation failed"
             }
             
-            # 直接加入 done 字典，不使用 rows
+            # Add directly to done dictionary, not using rows
             env["done"][q] = item
             question_processed = True
         
@@ -339,19 +338,20 @@ if __name__ == "__main__":
             
         # ---- SAVE_INTERVAL ----
         if processed > 0 and processed % SAVE_INTERVAL == 0:
-            print(f"\n💾 达到保存间隔，保存进度...")
+            print(f"\n💾 Reached save interval, saving progress...")
             for mname, env in model_env.items():
                 save_progress(env["done"], env["out"])
     
-    # 3) 全部完成后保存一次
-    print(f"\n🏁 处理完成！")
-    print(f"📊 统计信息:")
-    print(f"   - 新处理: {processed} 题")
-    print(f"   - 跳过: {skipped} 题") 
-    print(f"   - 质量问题: {quality_failures} 题")
+    # 3) Save once after all completion
+    print(f"\n🏁 Processing complete!")
+    print(f"📊 Statistics:")
+    print(f"   - Newly processed: {processed} questions")
+    print(f"   - Skipped: {skipped} questions") 
+    print(f"   - Quality issues: {quality_failures} questions")
     
     for mname, env in model_env.items():
         save_progress(env["done"], env["out"])
-        print(f"✅ {mname} 总计 {len(env['done'])} 条记录")
+        print(f"✅ {mname} total {len(env['done'])} records")
     
-    print(f"\n🎉 按题目顺序全部处理完毕，文件保存在: {OUTPUT_DIR}")
+
+    print(f"\n🎉 All processed in question order, files saved to: {OUTPUT_DIR}")
