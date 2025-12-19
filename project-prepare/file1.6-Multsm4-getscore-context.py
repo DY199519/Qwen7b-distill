@@ -3,13 +3,13 @@
 """
 pairwise_grade_answers_with_context.py
 --------------------------------------
-读取 grouped_answers.json（其中每个核心问题下包含 **answers_with_context** 数组）
-对同一问题下的所有答案做两两配对，调用 o3 模型进行评分。
+Reads grouped_answers.json (where each core question contains an **answers_with_context** array)
+Pairs all answers under the same question and uses the o3 model for scoring.
 
-成功解析 GPT 输出的判据：
-    • 能捕获两行各 6 个数字的分数
-    • 能捕获胜负行（AB 或 BA）
-若解析失败，则自动重试，直至成功或触达最大重试次数。
+Criteria for successful parsing of GPT output:
+    • Able to capture 6 numbers per line in two lines of scores
+    • Able to capture the winning line (AB or BA)
+If parsing fails, automatically retry until successful or maximum retries are reached.
 """
 
 import json, itertools, re, os, time
@@ -19,30 +19,49 @@ from openai import OpenAI
 import httpx
 from tqdm import tqdm
 
-# ========== OpenAI 初始化 ====================================================
+# ========== OpenAI Initialization ====================================================
 httpx_client = httpx.Client(verify=False)
 os.environ["OPENAI_API_KEY"] = "sk-gwwbtmiiMKmF9h3P858dCaC14dB94bCc9bD728BaA6Bf082d"
-os.environ["OPENAI_BASE_URL"] = "https://api.vansai.cn/v1"  # 如有需要可修改
+os.environ["OPENAI_BASE_URL"] = "https://api.vansai.cn/v1"  # Modify if needed
 client = OpenAI(http_client=httpx_client)
 
-# ========== 路径设置 ========================================================
-INPUT_PATH  = r"D:\project\grouped_answers.json"   # 按需修改
+# ========== Path Settings ========================================================
+INPUT_PATH  = r"D:\project\grouped_answers.json"   # Modify as needed
 OUTPUT_DIR  = r"D:\project"
 OUTPUT_NAME = "pairwise_grades_retry_context.json"
 
-# ========== Prompt 模板 =====================================================
-PROMPT_TMPL = """你是一个专业答题评审员，请对两个答案进行比较，按照以下 5 个维度给每个答案打分：\n1. 逻辑性   2. 深度   3. 创新性   4. 准确性   5. 完整性\n每维度满分 100，总分 500。\n  \n### 核心问题\n{core_question}\n\n### 回答\nA:\n{answer_a}\n\nB:\n{answer_b}\n\n### 输出要求\n- 先输出 2 行分数，每行对应 A、B，格式：总分 逻辑 深度 创新 准确 完整 （仅数字、空格）\n- 接着单独一行输出胜负，内容为 AB 或 BA\n- 最后一段给出评分理由并引用依据\n严格遵守格式，现在开始：\n"""
+# ========== Prompt Template =====================================================
+PROMPT_TMPL = """You are a professional answer reviewer. Please compare two answers and score each answer according to the following 5 dimensions:
+1. Logicality   2. Depth   3. Innovation   4. Accuracy   5. Completeness
+Each dimension is out of 100, with a total score of 500.
+
+### Core Question
+{core_question}
+
+### Answers
+A:
+{answer_a}
+
+B:
+{answer_b}
+
+### Output Requirements
+- First, output 2 lines of scores, each corresponding to A and B. Format: total logic depth innovation accuracy completeness (only numbers and spaces)
+- Then, output the winner in a separate line, which should be AB or BA
+- Finally, provide a paragraph explaining the scoring reasons with references
+Strictly follow the format. Now start:
+"""
 
 # ---------------------------------------------------------------------------
-# 解析 GPT 输出
+# Parse GPT Output
 # ---------------------------------------------------------------------------
 
 def parse_response(raw: str) -> Tuple[dict, dict, List[str], str]:
-    """解析评分结果文本。若格式不合规则抛出 ValueError。"""
+    """Parses the scoring result text. Raises ValueError if format is invalid."""
     keys = ["total", "logic", "depth", "innovation", "accuracy", "completeness"]
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
 
-    # 捕获分数行（至少 6 个数字视为一行）
+    # Capture score lines (at least 6 numbers considered a valid line)
     score_rows: List[List[int]] = []
     for l in lines:
         nums = re.findall(r"\d+", l)
@@ -51,33 +70,33 @@ def parse_response(raw: str) -> Tuple[dict, dict, List[str], str]:
         if len(score_rows) == 2:
             break
     if len(score_rows) != 2:
-        raise ValueError("找不到两行完整分数")
+        raise ValueError("Could not find two complete score lines")
 
-    # 捕获胜负行
+    # Capture winner line
     winner_line = next((l for l in lines if re.fullmatch(r"[ABab]{2}", l)), "")
     if not winner_line:
-        raise ValueError("未找到胜负行 AB/BA")
+        raise ValueError("Could not find winner line AB/BA")
 
-    # 剩余作为评论
+    # Remaining content as commentary
     win_idx = lines.index(winner_line)
     commentary = "\n".join(lines[win_idx + 1:]).strip()
 
     return (
-        dict(zip(keys, score_rows[0])),  # A 的分数
-        dict(zip(keys, score_rows[1])),  # B 的分数
-        list(winner_line.upper()),       # ["A", "B"] 或 ["B", "A"]
-        commentary                       # GPT 给出的评语
+        dict(zip(keys, score_rows[0])),  # Scores for A
+        dict(zip(keys, score_rows[1])),  # Scores for B
+        list(winner_line.upper()),       # ["A", "B"] or ["B", "A"]
+        commentary                       # GPT's commentary
     )
 
 # ---------------------------------------------------------------------------
-# GPT 调用 + 自动重试
+# GPT Call + Automatic Retry
 # ---------------------------------------------------------------------------
 
 def ask_and_parse(prompt: str,
                   model: str = "gpt-4o",
                   max_attempts: int = 6,
                   backoff_base: int = 2):
-    """循环调用 GPT，直到 parse_response 成功或超过最大尝试次数。"""
+    """Continuously calls GPT until parse_response succeeds or maximum attempts are exceeded."""
     for attempt in range(1, max_attempts + 1):
         try:
             resp = client.chat.completions.create(
@@ -86,20 +105,20 @@ def ask_and_parse(prompt: str,
                 temperature=0
             )
             raw = resp.choices[0].message.content.strip()
-            parsed = parse_response(raw)     # 尝试解析
-            return *parsed, raw              # 成功则返回
+            parsed = parse_response(raw)     # Attempt parsing
+            return *parsed, raw              # Return if successful
         except Exception as e:
             wait = backoff_base ** attempt
-            print(f"⚠️ 尝试 {attempt}/{max_attempts} 失败：{e} —— {wait}s later retry")
+            print(f"⚠️ Attempt {attempt}/{max_attempts} failed: {e} —— Retrying in {wait}s")
             time.sleep(wait)
-    raise RuntimeError("达到最大重试次数仍未获得合规回答")
+    raise RuntimeError("Reached maximum retries without obtaining valid response")
 
 # ---------------------------------------------------------------------------
-# 把 answers_with_context 标准化为 [[model,text], ...]
+# Standardize answers_with_context to [[model, text], ...]
 # ---------------------------------------------------------------------------
 
 def normalize(arr):
-    """确保 answers 数组被转换为 [[model, text], ...] 的统一格式。"""
+    """Ensures the answers array is converted to a unified format of [[model, text], ...]."""
     if not arr:
         return []
     if isinstance(arr[0], list):
@@ -113,13 +132,13 @@ def normalize(arr):
     return []
 
 # ---------------------------------------------------------------------------
-# 评分一个配对
+# Score a Pair
 # ---------------------------------------------------------------------------
 
 def grade_pair(core_q: str, model_a: str, text_a: str, model_b: str, text_b: str):
     prompt = PROMPT_TMPL.format(core_question=core_q, answer_a=text_a, answer_b=text_b)
 
-    # 日志摘要
+    # Log summary
     print("\n" + "-" * 60)
     print(f"Q: {core_q[:50]}...")
     print(f"A by {model_a[:20]} | B by {model_b[:20]}")
@@ -137,36 +156,36 @@ def grade_pair(core_q: str, model_a: str, text_a: str, model_b: str, text_b: str
     }
 
 # ---------------------------------------------------------------------------
-# 主流程
+# Main Process
 # ---------------------------------------------------------------------------
 
 def main():
     with open(INPUT_PATH, "r", encoding="utf-8") as f:
         grouped = json.load(f)
 
-    # 统计总配对数
+    # Calculate total number of pairs
     total_pairs = 0
     for v in grouped.values():
         total_pairs += len(list(itertools.combinations(normalize(v.get("answers_with_context")), 2)))
-    print(f"总 answers_with_context 对比数：{total_pairs}\n")
+    print(f"Total number of answers_with_context comparisons: {total_pairs}\n")
 
     results: Dict[str, Any] = {}
     done = 0
-    for cq, bundle in tqdm(grouped.items(), desc="核心问题"):
+    for cq, bundle in tqdm(grouped.items(), desc="Core Questions"):
         answers = normalize(bundle.get("answers_with_context"))
         pair_res = []
         for (m1, t1), (m2, t2) in itertools.combinations(answers, 2):
             pair_res.append(grade_pair(cq, m1, t1, m2, t2))
             done += 1
-            print(f"✓ {done}/{total_pairs} 完成\n")
+            print(f"✓ {done}/{total_pairs} completed\n")
         results[cq] = {"answer_pairs": pair_res}
 
-    # 输出结果
+    # Output results
     Path(OUTPUT_DIR).mkdir(exist_ok=True, parents=True)
     out_path = Path(OUTPUT_DIR) / OUTPUT_NAME
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"\n🎉 全部完成，结果写入 {out_path}")
+    print(f"\n🎉 All completed. Results written to {out_path}")
 
 
 if __name__ == "__main__":
