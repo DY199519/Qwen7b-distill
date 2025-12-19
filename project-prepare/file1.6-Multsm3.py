@@ -3,11 +3,11 @@
 """
 flatten_and_group_by_model.py
 -----------------------------
-读取一至两份 JSON（支持 {"model_name":..., "results":[...]} 结构），
-过滤指定模型，按 core_question 归并：
-    * basic_answers       -> 列表 [model_name, text]
-    * answers_with_context-> 列表 [model_name, text]
-写出 grouped_answers.json
+Read one or two JSON files (supporting the structure {"model_name":..., "results":[...]}),
+filter specified models, and group by core_question:
+    * basic_answers       -> list [model_name, text]
+    * answers_with_context-> list [model_name, text]
+Write to grouped_answers.json
 """
 
 import json
@@ -15,24 +15,24 @@ from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict, Any
 
-# ========= 路径配置 ========================================================
+# ========= Path Configuration ========================================================
 INPUT_FILE_1 = r"D:\project\finalmut_fixed_all.json"
-INPUT_FILE_2 = r""   # 没有就设 ""
+INPUT_FILE_2 = r""   # Set to "" if not available
 
 OUTPUT_DIR   = r"D:\project"
 OUTPUT_NAME  = "grouped_answers.json"
 
-SKIP_MODEL   = "qwen3-235b-a22b"                       # 需要排除的模型
+SKIP_MODEL   = "qwen3-235b-a22b"                       # Model to be excluded
 # ==========================================================================
 
 
-# ---------- 把嵌套 results “摊平” ------------------------------------------
+# ---------- Flatten nested results ------------------------------------------
 def flatten_records(raw: List[dict]) -> List[dict]:
     flat: List[dict] = []
     for item in raw:
-        if "core_question" in item:          # 已是扁平条目
+        if "core_question" in item:          # Already a flat entry
             flat.append(item)
-        else:                                # 外层 + 内层 results
+        else:                                # Outer layer + inner results
             model = item.get("model_name", "unknown_model")
             for res in item.get("results", []):
                 rec = res.copy()
@@ -41,23 +41,23 @@ def flatten_records(raw: List[dict]) -> List[dict]:
     return flat
 
 
-# ---------- 读取并摊平 -----------------------------------------------------
+# ---------- Read and flatten -----------------------------------------------------
 def load_json_file(path_str: str) -> List[dict]:
     if not path_str:
         return []
     p = Path(path_str)
     if not p.exists():
-        raise FileNotFoundError(f"未找到输入文件：{p}")
+        raise FileNotFoundError(f"Input file not found: {p}")
     with p.open("r", encoding="utf-8") as f:
         data = json.load(f)
     return flatten_records(data if isinstance(data, list) else [data])
 
 
-# ---------- 归并：保留 model + text ---------------------------------------
+# ---------- Grouping: retain model + text ---------------------------------------
 def regroup_split(list_a: List[dict],
                   list_b: List[dict]) -> Dict[str, Dict[str, List[List[str]]]]:
     """
-    返回形如:
+    Returns in the form:
     {
       core_q1: {
         "basic_answers": [ [model, text], ... ],
@@ -87,7 +87,7 @@ def regroup_split(list_a: List[dict],
     return grouped
 
 
-# ---------- 主流程 ---------------------------------------------------------
+# ---------- Main process ---------------------------------------------------------
 def main() -> None:
     data1 = load_json_file(INPUT_FILE_1)
     data2 = load_json_file(INPUT_FILE_2)
@@ -99,7 +99,7 @@ def main() -> None:
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(grouped, f, ensure_ascii=False, indent=2)
 
-    print(f"完成！已写入 {out_path}  —— 共 {len(grouped)} 个 core_question")
+    print(f"Completed! Written to {out_path}  —— Total {len(grouped)} core_question entries")
 
 
 if __name__ == "__main__":
