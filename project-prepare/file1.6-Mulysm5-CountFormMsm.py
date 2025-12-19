@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from collections import defaultdict
 
-# === 加载数据 ===
+# === Load Data ===
 with open("pairwise_grades_retry_basic.json", "r", encoding="utf-8") as f:
     basic_data = json.load(f)
 
@@ -19,7 +19,7 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     domain_data_2 = []
 
-# === 提取题目 - 学科映射 ===
+# === Extract Question-Domain Mapping ===
 question_to_domains = {}
 def extract_domains(data):
     for item in data:
@@ -31,7 +31,7 @@ def extract_domains(data):
 extract_domains(domain_data_1)
 extract_domains(domain_data_2)
 
-# === 提取配对数据 ===
+# === Extract Pairwise Data ===
 def extract_pairs(data, key):
     rows = []
     for q, content in data.items():
@@ -53,7 +53,7 @@ all_questions = list(dict.fromkeys(df_basic["question"].tolist() + df_context["q
 all_models = sorted(set(df_basic["model_a"]) | set(df_basic["model_b"]) |
                     set(df_context["model_a"]) | set(df_context["model_b"]))
 
-# === 胜率矩阵 ===
+# === Win Rate Matrix ===
 def winrate_matrix(df, models):
     mat = pd.DataFrame(index=models, columns=models)
     for m1 in models:
@@ -73,7 +73,7 @@ def winrate_matrix(df, models):
 matrix_basic   = winrate_matrix(df_basic,   all_models)
 matrix_context = winrate_matrix(df_context, all_models)
 
-# === 模型总得分 ===
+# === Overall Model Scores ===
 def overall_scores(df):
     bucket = defaultdict(lambda: defaultdict(list))
     for _, row in df.iterrows():
@@ -96,14 +96,14 @@ context_scores_df = overall_scores(df_context)
 basic_scores_sorted   = basic_scores_df.sort_values("total_sum",   ascending=False)
 context_scores_sorted = context_scores_df.sort_values("total_sum", ascending=False)
 
-# === 提取总均分映射 ===
+# === Extract Total Average Mapping ===
 def build_avg_map(df):
     return {row["Model"]: row["total_avg"] for _, row in df.iterrows()}
 
 basic_avg_map   = build_avg_map(basic_scores_sorted)
 context_avg_map = build_avg_map(context_scores_sorted)
 
-# === 学科统计表（含总均分 & 涉及题目数） ===
+# === Domain Statistics Tables (Including Total Average & Number of Questions Involved) ===
 def domain_tables(df, avg_map):
     seen = set()
     d_totals = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
@@ -132,13 +132,13 @@ def domain_tables(df, avg_map):
             row = {"Model": model}
             for dim in ["logic","depth","innovation","accuracy","completeness","total"]:
                 row[dim] = round(dims.get(dim, 0), 2)
-            row["单学科均分"] = round(row["total"] / cnt, 2) if cnt else 0
-            row["模型总均分"] = avg_map.get(model, 0)
+            row["Average Score per Domain"] = round(row["total"] / cnt, 2) if cnt else 0
+            row["Overall Model Average"] = avg_map.get(model, 0)
             rows.append(row)
         df_table = pd.DataFrame(rows).sort_values("total", ascending=False)
-        # 添加一行：学科涉及题目数说明
+        # Add a row: Description of the number of questions involved in the domain
         df_table.loc[len(df_table.index)] = {
-            "Model": f"共有 {len(d_qcount[dom])} 道题目涉及“{dom}”学科"
+            "Model": f"A total of {len(d_qcount[dom])} questions involve the '{dom}' domain"
         }
         tables[dom] = df_table
     return tables
@@ -146,19 +146,19 @@ def domain_tables(df, avg_map):
 basic_domain_tables   = domain_tables(df_basic,   basic_avg_map)
 context_domain_tables = domain_tables(df_context, context_avg_map)
 
-# === Question & Domains 表格 ===
+# === Question & Domains Table ===
 question_domains_df = pd.DataFrame([
     {"ID": i+1, "Question": q, "Domains": ", ".join(question_to_domains.get(q, []))}
     for i, q in enumerate(all_questions)
 ])
 
-# === 题目-学科 TXT 输出 ===
+# === Question-Domain TXT Output ===
 with open("question_list_with_domains.txt", "w", encoding="utf-8") as f:
-    f.write("【题目编号 - 问题 - 学科】\n")
+    f.write("【Question ID - Question - Domains】\n")
     for i, q in enumerate(all_questions, 1):
-        f.write(f"{i}. {q} —— 学科: {', '.join(question_to_domains.get(q, []))}\n")
+        f.write(f"{i}. {q} —— Domains: {', '.join(question_to_domains.get(q, []))}\n")
 
-# === 写入 Excel 文件 ===
+# === Write to Excel File ===
 with pd.ExcelWriter("model_comparison_separated.xlsx", engine="openpyxl") as w:
     basic_scores_sorted.to_excel(w, sheet_name="Basic Model Scores", index=False)
     context_scores_sorted.to_excel(w, sheet_name="Context Model Scores", index=False)
@@ -172,4 +172,4 @@ with pd.ExcelWriter("model_comparison_separated.xlsx", engine="openpyxl") as w:
     for dom, df in context_domain_tables.items():
         df.to_excel(w, sheet_name=f"Context_{dom[:23]}", index=False)
 
-print("✅ 所有工作表和学科页均已生成完成，包括总均分列与题目数量备注。")
+print("✅ All worksheets and domain pages have been generated, including the total average column and question count notes.")
