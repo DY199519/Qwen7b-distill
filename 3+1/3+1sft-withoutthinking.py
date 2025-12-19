@@ -1,32 +1,32 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-简化版Alpaca数据集生成器
-instruction=question, input为空, output=combination_1_reply
+Simplified Alpaca Dataset Generator
+instruction=question, input is empty, output=combination_1_reply
 """
 
 import json
 import pandas as pd
 from pathlib import Path
 
-# 配置
+# Configuration
 
 BASE_DIR = Path(r"D:\project7\10000final")
 BASE_DIR1 = Path(r"D:\qwensft\uploadjson")
 
 
 
-INPUT_JSON = BASE_DIR / "deepseek_answers_without_summary3+1-1-9400.json"  # 3+1融合数据
-SCORES_JSON = BASE_DIR / "grades-3+1-1-9400.json"  # 评分数据
-OUTPUT_DATASET = BASE_DIR1 / "alpaca_dataset_3+1_withoutthinking.json"  # 输出Alpaca数据集
-OUTPUT_EXCEL = BASE_DIR1 / "alpaca_dataset_3+1_info_2.xlsx"  # 输出Excel
+INPUT_JSON = BASE_DIR / "deepseek_answers_without_summary3+1-1-9400.json"  # 3+1 fused data
+SCORES_JSON = BASE_DIR / "grades-3+1-1-9400.json"  # Scoring data
+OUTPUT_DATASET = BASE_DIR1 / "alpaca_dataset_3+1_withoutthinking.json"  # Output Alpaca dataset
+OUTPUT_EXCEL = BASE_DIR1 / "alpaca_dataset_3+1_info_2.xlsx"  # Output Excel
 
 
 
 ANALYZE_COUNT = 3000
 
 def load_scores(scores_path):
-    """加载评分数据"""
+    """Load scoring data"""
     with scores_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     
@@ -46,11 +46,11 @@ def load_scores(scores_path):
                 "num_valid_trials": item.get("num_valid_trials", 0)
             }
     
-    print(f"加载了 {len(question_scores)} 个问题的评分")
+    print(f"Loaded scores for {len(question_scores)} questions")
     return question_scores
 
 def create_alpaca_sample(item):
-    """创建Alpaca格式样本"""
+    """Create Alpaca format sample"""
     return {
         "instruction": item.get("question", ""),
         "input": "",
@@ -58,9 +58,9 @@ def create_alpaca_sample(item):
     }
 
 def main():
-    print("开始生成Alpaca数据集...")
+    print("Starting to generate Alpaca dataset...")
     
-    # 加载数据
+    # Load data
     scores = load_scores(SCORES_JSON)
     
     with INPUT_JSON.open("r", encoding="utf-8") as f:
@@ -68,26 +68,26 @@ def main():
     if not isinstance(data, list):
         data = [data]
     
-    print(f"加载了 {len(data)} 条数据")
+    print(f"Loaded {len(data)} data entries")
     
-    # 过滤有效数据
+    # Filter valid data
     valid_items = []
     for item in data:
         question = item.get("question", "")
         reply = item.get("combination_1_reply", "")
         
-        # 检查必需字段和长度
+        # Check required fields and lengths
         if question and reply and len(question) >= 10 and len(reply) >= 100 and question in scores:
             item.update(scores[question])
             valid_items.append(item)
     
-    print(f"通过筛选: {len(valid_items)} 条")
+    print(f"Passed filtering: {len(valid_items)} entries")
     
-    # 按分数排序取TOP
+    # Sort by score and take TOP entries
     valid_items.sort(key=lambda x: x.get("avg_score_50", 0), reverse=True)
     process_items = valid_items[:ANALYZE_COUNT]
     
-    # 生成Alpaca数据集
+    # Generate Alpaca dataset
     alpaca_dataset = []
     excel_data = []
     
@@ -97,20 +97,20 @@ def main():
             alpaca_dataset.append(sample)
             
             excel_data.append({
-                "序号": idx,
-                "问题": item.get("question", ""),
-                "评分(50分制)": item.get("avg_score_50", 0),
-                "评分(100分制)": item.get("avg_score_100", 0),
-                "逻辑": item.get("avg_logic", 0),
-                "深度": item.get("avg_depth", 0),
-                "创新": item.get("avg_innovation", 0),
-                "准确": item.get("avg_accuracy", 0),
-                "完整": item.get("avg_completeness", 0),
-                "Instruction长度": len(sample["instruction"]),
-                "Output长度": len(sample["output"])
+                "Serial Number": idx,
+                "Question": item.get("question", ""),
+                "Score (50-point scale)": item.get("avg_score_50", 0),
+                "Score (100-point scale)": item.get("avg_score_100", 0),
+                "Logic": item.get("avg_logic", 0),
+                "Depth": item.get("avg_depth", 0),
+                "Innovation": item.get("avg_innovation", 0),
+                "Accuracy": item.get("avg_accuracy", 0),
+                "Completeness": item.get("avg_completeness", 0),
+                "Instruction Length": len(sample["instruction"]),
+                "Output Length": len(sample["output"])
             })
     
-    # 保存结果
+    # Save results
     with OUTPUT_DATASET.open("w", encoding="utf-8") as f:
         json.dump(alpaca_dataset, f, ensure_ascii=False, indent=2)
     
@@ -118,7 +118,7 @@ def main():
         df = pd.DataFrame(excel_data)
         df.to_excel(OUTPUT_EXCEL, index=False)
     
-    print(f"完成! 生成了 {len(alpaca_dataset)} 个样本")
+    print(f"Completed! Generated {len(alpaca_dataset)} samples")
     print(f"JSON: {OUTPUT_DATASET}")
     print(f"Excel: {OUTPUT_EXCEL}")
 
