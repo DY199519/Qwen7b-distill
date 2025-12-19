@@ -3,9 +3,9 @@
 """
 grade_quality_separator.py
 --------------------------
-根据答案质量检查结果，将评分文件分成两部分：
-1. 有质量问题题目的评分（不可靠）
-2. 质量良好题目的评分（可靠）
+Based on answer quality check results, split the grading file into two parts:
+1. Grades for questions with quality issues (unreliable)
+2. Grades for questions with good quality (reliable)
 """
 
 import json
@@ -14,31 +14,31 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Set
 from datetime import datetime
 
-# ========= 配置参数 ===========================================================
-# 输入路径
+# ========= Configuration Parameters ===========================================================
+# Input path
 INPUT_DIR = Path(r"D:\project7\MM\result")
 
-# 答案文件（用于检查质量）
+# Answer file (for quality check)
 ANSWERS_FILE = INPUT_DIR / "multi_model_answer-1-700.json"
 
-# 评分文件（需要根据质量检查结果分离）
+# Grading file (needs to be separated based on quality check results)
 GRADES_FILE = INPUT_DIR / "3+1" / "grades-3+1-700-1700.json"
 
-# 输出目录
+# Output directory
 OUTPUT_DIR = INPUT_DIR / "quality_separated"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# 输出文件
+# Output files
 PROBLEMATIC_GRADES_FILE = OUTPUT_DIR / "grades_with_quality_issues.json"
 GOOD_GRADES_FILE = OUTPUT_DIR / "grades_without_issues.json"
 QUALITY_CHECK_REPORT = OUTPUT_DIR / "quality_check_report.json"
-PROBLEMATIC_ANSWERS_FILE = OUTPUT_DIR / "answers_with_quality_issues.json"  # 新增：有问题的答案文件
+PROBLEMATIC_ANSWERS_FILE = OUTPUT_DIR / "answers_with_quality_issues.json"  # New: file for problematic answers
 
-# 质量检查参数
-MIN_ANSWER_LENGTH = 100  # 最小答案长度
-MIN_COMPLETE_LENGTH = 50  # 完整性最小长度
+# Quality check parameters
+MIN_ANSWER_LENGTH = 100  # Minimum answer length
+MIN_COMPLETE_LENGTH = 50  # Minimum length for completeness
 
-# 需要检查的模型
+# Models to check
 MODELS_TO_CHECK = [
     "gemini-2.5-flash",
     "grok-3", 
@@ -46,7 +46,7 @@ MODELS_TO_CHECK = [
     "deepseek-v3"
 ]
 
-# 错误模式
+# Error patterns
 ERROR_PATTERNS = [
     r'^error:',
     r'^exception:',
@@ -58,79 +58,79 @@ ERROR_PATTERNS = [
     r'rate limit',
     r'timeout',
     r'\[ERROR',
-    r'API调用失败'
+    r'API调用失败'  # Kept in Chinese as it's a specific error message pattern
 ]
 
-# ========= 工具函数 ===========================================================
+# ========= Utility Functions ===========================================================
 def load_json_file(file_path: Path) -> Dict[str, Any]:
-    """加载JSON文件"""
+    """Load a JSON file"""
     if not file_path.exists():
-        print(f"❌ 文件不存在: {file_path}")
+        print(f"❌ File does not exist: {file_path}")
         return {}
     
     try:
         with file_path.open("r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"❌ 加载文件失败 {file_path}: {e}")
+        print(f"❌ Failed to load file {file_path}: {e}")
         return {}
 
 def save_json_file(data: Any, file_path: Path, description: str = ""):
-    """保存JSON文件"""
+    """Save data to a JSON file"""
     try:
         with file_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ {description}已保存到: {file_path}")
+        print(f"✅ {description}saved to: {file_path}")
     except Exception as e:
-        print(f"❌ 保存失败: {e}")
+        print(f"❌ Save failed: {e}")
 
 def check_answer_quality(answer_text: str) -> Tuple[bool, str]:
     """
-    检查答案质量（使用第一个脚本的标准）
-    返回: (是否有问题, 问题描述)
+    Check answer quality (using standards from the first script)
+    Returns: (has_issue, issue_description)
     """
-    # 检查是否为空
+    # Check if empty
     if not answer_text or answer_text.strip() == "":
-        return True, "空答案"
+        return True, "Empty answer"
     
     answer_text = answer_text.strip()
     
-    # 检查长度
+    # Check length
     if len(answer_text) < MIN_COMPLETE_LENGTH:
-        return True, f"答案过短({len(answer_text)}字符)"
+        return True, f"Answer too short ({len(answer_text)} characters)"
     
-    # 简单检查：是否以常见的完整标点结尾
+    # Simple check: whether it ends with common punctuation marks
     if answer_text.endswith(('。', '！', '？', '.', '!', '?')):
-        return False, "完整"
+        return False, "Complete"
     
-    # 如果没有标点结尾，检查长度
+    # If no punctuation at the end, check length
     if len(answer_text) < MIN_ANSWER_LENGTH:
-        return True, f"无结尾标点且较短({len(answer_text)}字符)"
+        return True, f"No ending punctuation and short ({len(answer_text)} characters)"
     
-    # 长答案但无标点，也视为不完整（与第一个脚本一致）
-    return True, f"无结尾标点({len(answer_text)}字符)"
+    # Long answer without punctuation is also considered incomplete (consistent with first script)
+    return True, f"No ending punctuation ({len(answer_text)} characters)"
 
 def check_answers_file(file_path: Path) -> Tuple[Set[str], Dict[str, List[Dict]], Dict[str, Any]]:
     """
-    检查答案文件，找出有质量问题的题目
-    返回: (有问题的题目集合, 问题详情, 原始questions数据)
+    Check answer file to find questions with quality issues
+    Returns: (set of problematic questions, issue details, original questions data)
     """
-    print(f"\n🔍 开始检查答案文件: {file_path}")
+    print(f"\n🔍 Starting to check answer file: {file_path}")
     
-    # 加载数据
+    # Load data
     data = load_json_file(file_path)
     if not data:
         return set(), {}, {}
     
-    # 获取questions部分
+    # Get questions section
     questions_data = data.get("questions", {})
     if not questions_data:
-        print("❌ 未找到questions字段")
+        print("❌ No 'questions' field found")
         return set(), {}, {}
     
-    print(f"📊 找到 {len(questions_data)} 个问题")
+    print(f"📊 Found {len(questions_data)} questions")
     
-    # 检查每个题目
+    # Check each question
     problematic_questions = set()
     problem_details = {}
     
@@ -142,7 +142,7 @@ def check_answers_file(file_path: Path) -> Tuple[Set[str], Dict[str, List[Dict]]
         question_has_issue = False
         question_issues = []
         
-        # 检查每个模型的答案
+        # Check answers from each model
         for model in MODELS_TO_CHECK:
             total_checks += 1
             
@@ -150,8 +150,8 @@ def check_answers_file(file_path: Path) -> Tuple[Set[str], Dict[str, List[Dict]]
                 question_has_issue = True
                 question_issues.append({
                     "model": model,
-                    "issue": "答案缺失",
-                    "details": "该模型没有答案"
+                    "issue": "Missing answer",
+                    "details": "No answer from this model"
                 })
                 total_issues += 1
             else:
@@ -160,8 +160,8 @@ def check_answers_file(file_path: Path) -> Tuple[Set[str], Dict[str, List[Dict]]
                     question_has_issue = True
                     question_issues.append({
                         "model": model,
-                        "issue": "空答案列表",
-                        "details": "答案列表为空"
+                        "issue": "Empty answer list",
+                        "details": "Answer list is empty"
                     })
                     total_issues += 1
                 else:
@@ -178,16 +178,16 @@ def check_answers_file(file_path: Path) -> Tuple[Set[str], Dict[str, List[Dict]]
                         })
                         total_issues += 1
         
-        # 记录有问题的题目
+        # Record problematic questions
         if question_has_issue:
             problematic_questions.add(question)
             problem_details[question] = question_issues
     
-    print(f"\n📊 检查完成:")
-    print(f"  · 总检查项: {total_checks}")
-    print(f"  · 发现问题: {total_issues}")
-    print(f"  · 有问题的题目: {len(problematic_questions)}")
-    print(f"  · 没问题的题目: {len(questions_data) - len(problematic_questions)}")
+    print(f"\n📊 Check completed:")
+    print(f"  · Total checks: {total_checks}")
+    print(f"  · Issues found: {total_issues}")
+    print(f"  · Problematic questions: {len(problematic_questions)}")
+    print(f"  · Problem-free questions: {len(questions_data) - len(problematic_questions)}")
     
     return problematic_questions, problem_details, questions_data
 
@@ -196,51 +196,51 @@ def separate_grades_by_quality(grades_file: Path,
                              problem_details: Dict[str, List[Dict]],
                              questions_data: Dict[str, Any]) -> Tuple[int, int]:
     """
-    根据质量问题分离评分文件，并保存有问题的答案
-    返回: (有问题的评分数, 没问题的评分数)
+    Separate grading file based on quality issues and save problematic answers
+    Returns: (count of problematic grades, count of good grades)
     """
-    print(f"\n📂 开始处理评分文件: {grades_file}")
+    print(f"\n📂 Starting to process grading file: {grades_file}")
     
-    # 加载评分数据
+    # Load grading data
     grades_data = load_json_file(grades_file)
     if not grades_data:
         return 0, 0
     
-    # 获取统计信息和详细结果
+    # Get statistics and detailed results
     statistics = grades_data.get("statistics", {})
     detailed_results = grades_data.get("detailed_results", [])
     
-    print(f"📊 找到 {len(detailed_results)} 个评分结果")
+    print(f"📊 Found {len(detailed_results)} grading results")
     
-    # 分离数据
+    # Separate data
     problematic_grades = []
     good_grades = []
-    problematic_answers = {}  # 新增：收集有问题的答案
+    problematic_answers = {}  # New: collect problematic answers
     
     for grade_item in detailed_results:
         question = grade_item.get("question", "")
         
         if question in problematic_questions:
-            # 添加质量问题信息
+            # Add quality issue information
             grade_item["quality_issues"] = problem_details.get(question, [])
             grade_item["has_quality_issues"] = True
             problematic_grades.append(grade_item)
             
-            # 收集有问题的答案数据
+            # Collect problematic answer data
             if question in questions_data:
                 problematic_answers[question] = questions_data[question]
         else:
             grade_item["has_quality_issues"] = False
             good_grades.append(grade_item)
     
-    print(f"\n📊 分离结果:")
-    print(f"  · 有质量问题的评分: {len(problematic_grades)}")
-    print(f"  · 质量良好的评分: {len(good_grades)}")
-    print(f"  · 有质量问题的答案: {len(problematic_answers)}")
+    print(f"\n📊 Separation results:")
+    print(f"  · Grades with quality issues: {len(problematic_grades)}")
+    print(f"  · Grades with good quality: {len(good_grades)}")
+    print(f"  · Answers with quality issues: {len(problematic_answers)}")
     
-    # 保存有问题的答案（使用原始格式）
+    # Save problematic answers (using original format)
     if problematic_answers:
-        # 计算有问题答案的汇总信息
+        # Calculate summary information for problematic answers
         all_models = set()
         total_answer_count = 0
         for q_data in problematic_answers.values():
@@ -263,9 +263,9 @@ def separate_grades_by_quality(grades_file: Path,
                 }
             }
         }
-        save_json_file(problematic_answers_data, PROBLEMATIC_ANSWERS_FILE, "有质量问题的答案")
+        save_json_file(problematic_answers_data, PROBLEMATIC_ANSWERS_FILE, "Answers with quality issues")
     
-    # 重新计算统计信息
+    # Recalculate statistics
     def recalculate_stats(grades_list, original_stats):
         if not grades_list:
             return {}
@@ -279,7 +279,7 @@ def separate_grades_by_quality(grades_file: Path,
         new_stats["total_average"] = round(sum(all_scores) / len(all_scores), 2) if all_scores else 0
         new_stats["total_average_100"] = round(sum(all_scores_100) / len(all_scores_100), 2) if all_scores_100 else 0
         
-        # 重新计算分数分布
+        # Recalculate score distribution
         new_stats["score_distribution"] = {
             "0-20": len([s for s in all_scores if s < 20]),
             "20-30": len([s for s in all_scores if 20 <= s < 30]),
@@ -291,34 +291,34 @@ def separate_grades_by_quality(grades_file: Path,
         
         return new_stats
     
-    # 保存有问题的评分
+    # Save problematic grades
     if problematic_grades:
         problematic_data = {
             "metadata": {
                 "source_grades_file": str(grades_file),
                 "source_answers_file": str(ANSWERS_FILE),
-                "separation_reason": "答案质量问题导致评分不可靠",
+                "separation_reason": "Scores unreliable due to answer quality issues",
                 "total_issues": sum(len(issues) for issues in problem_details.values()),
                 "separation_time": datetime.now().isoformat()
             },
             "statistics": recalculate_stats(problematic_grades, statistics),
             "detailed_results": problematic_grades
         }
-        save_json_file(problematic_data, PROBLEMATIC_GRADES_FILE, "有质量问题的评分")
+        save_json_file(problematic_data, PROBLEMATIC_GRADES_FILE, "Grades with quality issues")
     
-    # 保存质量良好的评分
+    # Save good quality grades
     if good_grades:
         good_data = {
             "metadata": {
                 "source_grades_file": str(grades_file),
                 "source_answers_file": str(ANSWERS_FILE),
-                "separation_reason": "答案质量良好，评分可靠",
+                "separation_reason": "Answers of good quality, scores reliable",
                 "separation_time": datetime.now().isoformat()
             },
             "statistics": recalculate_stats(good_grades, statistics),
             "detailed_results": good_grades
         }
-        save_json_file(good_data, GOOD_GRADES_FILE, "质量良好的评分")
+        save_json_file(good_data, GOOD_GRADES_FILE, "Grades with good quality")
     
     return len(problematic_grades), len(good_grades)
 
@@ -326,19 +326,19 @@ def generate_quality_report(problematic_questions: Set[str],
                           problem_details: Dict[str, List[Dict]],
                           problematic_count: int,
                           good_count: int):
-    """生成质量检查报告"""
-    # 统计问题类型
+    """Generate quality check report"""
+    # Count issue types
     issue_types = {}
     model_issues = {}
     
     for question, issues in problem_details.items():
         for issue in issues:
-            # 统计问题类型
-            issue_type = issue.get("issue", "未知")
+            # Count issue types
+            issue_type = issue.get("issue", "Unknown")
             issue_types[issue_type] = issue_types.get(issue_type, 0) + 1
             
-            # 统计模型问题
-            model = issue.get("model", "未知")
+            # Count model issues
+            model = issue.get("model", "Unknown")
             model_issues[model] = model_issues.get(model, 0) + 1
     
     report = {
@@ -356,50 +356,50 @@ def generate_quality_report(problematic_questions: Set[str],
         },
         "issue_types": issue_types,
         "issues_by_model": model_issues,
-        "sample_issues": list(problem_details.items())[:10]  # 前10个问题的示例
+        "sample_issues": list(problem_details.items())[:10]  # Samples of first 10 issues
     }
     
-    save_json_file(report, QUALITY_CHECK_REPORT, "质量检查报告")
+    save_json_file(report, QUALITY_CHECK_REPORT, "Quality check report")
     
-    # 打印报告摘要
+    # Print report summary
     print("\n" + "="*60)
-    print("📊 质量检查报告摘要")
+    print("📊 Quality Check Report Summary")
     print("="*60)
-    print(f"\n🔍 问题类型分布:")
+    print(f"\n🔍 Issue type distribution:")
     for issue_type, count in sorted(issue_types.items(), key=lambda x: x[1], reverse=True):
         print(f"  · {issue_type}: {count}")
     
-    print(f"\n🤖 各模型问题数:")
+    print(f"\n🤖 Issues by model:")
     for model, count in sorted(model_issues.items(), key=lambda x: x[1], reverse=True):
         print(f"  · {model}: {count}")
     
-    print(f"\n📈 评分可靠性:")
-    print(f"  · 可靠评分: {good_count} ({report['summary']['reliability_rate']})")
-    print(f"  · 不可靠评分: {problematic_count}")
+    print(f"\n📈 Grade reliability:")
+    print(f"  · Reliable grades: {good_count} ({report['summary']['reliability_rate']})")
+    print(f"  · Unreliable grades: {problematic_count}")
 
 def main():
-    """主函数"""
-    print("🚀 启动评分质量分离器...")
-    print(f"📁 答案文件: {ANSWERS_FILE}")
-    print(f"📁 评分文件: {GRADES_FILE}")
-    print(f"📁 输出目录: {OUTPUT_DIR}")
+    """Main function"""
+    print("🚀 Starting grade quality separator...")
+    print(f"📁 Answer file: {ANSWERS_FILE}")
+    print(f"📁 Grade file: {GRADES_FILE}")
+    print(f"📁 Output directory: {OUTPUT_DIR}")
     
-    # 步骤1: 检查答案文件，找出有问题的题目
+    # Step 1: Check answer file to find problematic questions
     problematic_questions, problem_details, questions_data = check_answers_file(ANSWERS_FILE)
     
     if not problematic_questions:
-        print("\n✅ 所有题目的答案质量都良好，无需分离评分文件")
+        print("\n✅ All answers are of good quality, no need to separate grade files")
         return
     
-    # 步骤2: 根据质量问题分离评分文件，并保存有问题的答案
+    # Step 2: Separate grade file based on quality issues and save problematic answers
     problematic_count, good_count = separate_grades_by_quality(
         GRADES_FILE, 
         problematic_questions, 
         problem_details,
-        questions_data  # 传递原始questions数据
+        questions_data  # Pass original questions data
     )
     
-    # 步骤3: 生成质量检查报告
+    # Step 3: Generate quality check report
     generate_quality_report(
         problematic_questions,
         problem_details,
@@ -407,11 +407,11 @@ def main():
         good_count
     )
     
-    print(f"\n✅ 处理完成！")
-    print(f"  · 有问题的评分: {PROBLEMATIC_GRADES_FILE}")
-    print(f"  · 可靠的评分: {GOOD_GRADES_FILE}")
-    print(f"  · 有问题的答案: {PROBLEMATIC_ANSWERS_FILE}")
-    print(f"  · 质量报告: {QUALITY_CHECK_REPORT}")
+    print(f"\n✅ Processing completed!")
+    print(f"  · Problematic grades: {PROBLEMATIC_GRADES_FILE}")
+    print(f"  · Reliable grades: {GOOD_GRADES_FILE}")
+    print(f"  · Problematic answers: {PROBLEMATIC_ANSWERS_FILE}")
+    print(f"  · Quality report: {QUALITY_CHECK_REPORT}")
 
 if __name__ == "__main__":
     main()
