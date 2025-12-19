@@ -3,14 +3,14 @@
 """
 multmm2_run234.py
 -----------------
-读取带有combination字段的prompt CSV文件，执行模型调用。
-不保存进度，每道题都去答案文件里实时查找是否已存在。
-输出 JSON 统一写入 OUTPUT_DIR。
-增强功能：
-- 数据完整性检查
-- 回答质量验证
-- 详细的错误日志
-- 智能重试机制
+Reads prompt CSV files with combination fields and executes model calls.
+Does not save progress; checks in real-time if each question already exists in the answer file.
+Unified JSON output is written to OUTPUT_DIR.
+Enhanced features:
+- Data integrity checks
+- Answer quality verification
+- Detailed error logging
+- Intelligent retry mechanism
 """
 
 import csv, json, time
@@ -20,34 +20,34 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 import re
 
-# ========== 0. 路径配置 =======================================================
-# 输出文件路径 - 放到最前面
+# ========== 0. Path Configuration =======================================================
+# Output file path - placed at the top
 OUTPUT_FILE = Path(r"D:\project7\MM\result\3+1\deepseek_answers_without_summary3+1-9400-10000.json")
 
-BASE_DIR_1   = Path(r"D:\project7\MM\3+1")           # 数据文件所在根目录
+BASE_DIR_1   = Path(r"D:\project7\MM\3+1")           # Root directory for data files
 BASE_DIR = Path(r"D:\project7\prompt")
-OUTPUT_DIR = Path(r"D:\project7\MM\result")            # <-- 只改这里即可换输出位置
-OUTPUT_DIR_1 = Path(r"D:\project7\MM\result\3+1")            # <-- 只改这里即可换输出位置
+OUTPUT_DIR = Path(r"D:\project7\MM\result")            # <-- Only modify this to change output location
+OUTPUT_DIR_1 = Path(r"D:\project7\MM\result\3+1")            # <-- Only modify this to change output location
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR_1.mkdir(parents=True, exist_ok=True)
 
-# 修改为读取带combination的CSV文件
+# Modified to read CSV files with combination
 PROMPT_CSV = OUTPUT_DIR / "final_prompt_3+1-9400-10000.csv"
 
 GROUPED_JSON = OUTPUT_DIR / "multi_model_answer9400-10000.json"
 
-# 运行日志文件
+# Run log file
 RUN_LOG = OUTPUT_DIR_1 / f"run_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 
-# ========== 1. 模型列表 =======================================================
+# ========== 1. Model List =======================================================
 MODEL_CFGS = [
     {
         "model_name": "deepseek-v3",
         "api_key": "sk-TlCq2TfX7oLuXzZMD1A3681285A2460bA26b6f0cEa5517Aa",
         "base_url": "https://usa.vimsai.com/v1",
-        "timeout": 60,  # 超时时间（秒）
-        "max_retry": 3,  # 最大重试次数
+        "timeout": 60,  # Timeout in seconds
+        "max_retry": 3,  # Maximum number of retries
     }
     # {
     #     "model_name": "qwen2.5-72b-instruct",
@@ -58,14 +58,14 @@ MODEL_CFGS = [
     # },
 ]
 
-# ========== 2. 答案验证类 ====================================================
+# ========== 2. Answer Validation Class ====================================================
 class AnswerValidator:
-    """答案验证器"""
+    """Answer validator"""
     
-    # 最小答案长度
+    # Minimum answer length
     MIN_ANSWER_LENGTH = 5
     
-    # 错误模式
+    # Error patterns
     ERROR_PATTERNS = [
         r'^error:',
         r'^exception:',
@@ -80,77 +80,77 @@ class AnswerValidator:
     
     @classmethod
     def validate_answer(cls, answer: str, question: str = "") -> Tuple[bool, List[str]]:
-        """验证答案是否有效"""
+        """Validate if the answer is valid"""
         issues = []
         
         if not answer:
-            issues.append("答案为空")
+            issues.append("Answer is empty")
             return False, issues
         
         if not isinstance(answer, str):
-            issues.append(f"答案类型错误: {type(answer)}")
+            issues.append(f"Answer type error: {type(answer)}")
             return False, issues
         
         answer = answer.strip()
         
-        # 长度检查
+        # Length check
         if len(answer) < cls.MIN_ANSWER_LENGTH:
-            issues.append(f"答案过短 ({len(answer)} 字符)")
+            issues.append(f"Answer too short ({len(answer)} characters)")
         
-        # 错误模式检查
+        # Error pattern check
         for pattern in cls.ERROR_PATTERNS:
             if re.search(pattern, answer, re.IGNORECASE):
-                issues.append(f"匹配错误模式: {pattern}")
+                issues.append(f"Matches error pattern: {pattern}")
                 return False, issues
         
         return len(issues) == 0, issues
 
-# ========== 3. 日志记录器 ====================================================
+# ========== 3. Log Recorder ====================================================
 class Logger:
-    """简单的日志记录器"""
+    """Simple log recorder"""
     
     def __init__(self, log_file: Path):
         self.log_file = log_file
         self.start_time = datetime.now()
-        self._write(f"=== 运行开始: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        self._write(f"=== Run started: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
     
     def _write(self, message: str):
-        """写入日志"""
+        """Write to log"""
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"{message}\n")
     
     def info(self, message: str):
-        """记录信息"""
+        """Record information"""
         timestamp = datetime.now().strftime('%H:%M:%S')
         self._write(f"[{timestamp}] INFO: {message}")
         print(f"📝 {message}")
     
     def error(self, message: str):
-        """记录错误"""
+        """Record error"""
         timestamp = datetime.now().strftime('%H:%M:%S')
         self._write(f"[{timestamp}] ERROR: {message}")
         print(f"❌ {message}")
     
     def warning(self, message: str):
-        """记录警告"""
+        """Record warning"""
         timestamp = datetime.now().strftime('%H:%M:%S')
         self._write(f"[{timestamp}] WARNING: {message}")
         print(f"⚠️ {message}")
     
     def summary(self, stats: dict):
-        """记录统计摘要"""
+        """Record statistical summary"""
         elapsed = datetime.now() - self.start_time
-        self._write(f"\n=== 运行统计 ===")
-        self._write(f"总耗时: {elapsed}")
+        self._write(f"\n=== Run Statistics ===")
+        self._write(f"Total time elapsed: {elapsed}")
         for key, value in stats.items():
             self._write(f"{key}: {value}")
         self._write("=" * 50)
 
-# ========== 4. 工具函数 =======================================================
+# ========== 4. Utility Functions =======================================================
 def find_existing_answer(question: str, output_file: Path) -> dict:
     """
-    在输出文件中查找指定问题的答案
-    返回: 找到的答案项，如果没找到返回None
+    Find the answer for a specified question in the output file
+    Returns: The found answer item, or None if not found
     """
     if not output_file.exists():
         return None
@@ -164,31 +164,31 @@ def find_existing_answer(question: str, output_file: Path) -> dict:
                 return item
                 
     except Exception as e:
-        print(f"❌ 读取答案文件失败: {e}")
+        print(f"❌ Failed to read answer file: {e}")
         
     return None
 
 def is_answer_complete_and_valid(item: dict) -> Tuple[bool, List[str]]:
     """
-    检查答案项是否完整且有效
-    返回: (是否有效, 问题列表)
+    Check if the answer item is complete and valid
+    Returns: (Is valid, list of issues)
     """
     if not item:
-        return False, ["答案项为空"]
+        return False, ["Answer item is empty"]
     
     issues = []
     
-    # 检查direct_reply
+    # Check direct_reply
     if not item.get('direct_reply'):
-        issues.append("缺少direct_reply")
+        issues.append("Missing direct_reply")
     else:
         is_valid, sub_issues = AnswerValidator.validate_answer(item['direct_reply'])
         if not is_valid:
             issues.extend([f"direct_reply: {issue}" for issue in sub_issues])
     
-    # 检查default_reply
+    # Check default_reply
     if not item.get('default_reply'):
-        issues.append("缺少default_reply")
+        issues.append("Missing default_reply")
     else:
         is_valid, sub_issues = AnswerValidator.validate_answer(item['default_reply'])
         if not is_valid:
@@ -199,14 +199,14 @@ def is_answer_complete_and_valid(item: dict) -> Tuple[bool, List[str]]:
 def ask(api: OpenAI, model: str, prompt: str, logger: Logger, 
         timeout: int = 60, max_retry: int = 3, pause: float = 2.0) -> Tuple[str, bool, List[str]]:
     """
-    调用模型API
-    返回: (答案, 是否成功, 错误列表)
+    Call the model API
+    Returns: (Answer, success status, list of errors)
     """
     errors = []
     
     for i in range(1, max_retry + 1):
         try:
-            # 设置超时
+            # Set timeout
             rsp = api.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
@@ -214,68 +214,68 @@ def ask(api: OpenAI, model: str, prompt: str, logger: Logger,
             )
             answer = rsp.choices[0].message.content.strip()
             
-            # 验证答案
+            # Validate answer
             is_valid, issues = AnswerValidator.validate_answer(answer, prompt[:50])
             
             if is_valid and answer:
                 return answer, True, []
             else:
-                errors.append(f"第{i}次尝试 - 答案验证失败: {', '.join(issues)}")
-                logger.warning(f"答案验证失败: {issues}")
+                errors.append(f"Attempt {i} - Answer validation failed: {', '.join(issues)}")
+                logger.warning(f"Answer validation failed: {issues}")
                 
         except Exception as e:
-            error_msg = f"第{i}次尝试失败: {str(e)}"
+            error_msg = f"Attempt {i} failed: {str(e)}"
             errors.append(error_msg)
             logger.error(error_msg)
         
         if i < max_retry:
-            time.sleep(pause * i)  # 递增等待时间
+            time.sleep(pause * i)  # Increasing wait time
     
     return "", False, errors
 
 def append_to_file(item: dict, output_file: Path, logger: Logger):
     """
-    将新答案追加到文件
+    Append new answer to file
     """
     try:
-        # 读取现有数据
+        # Read existing data
         if output_file.exists():
             with open(output_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         else:
             data = []
         
-        # 添加新项
+        # Add new item
         data.append(item)
         
-        # 写回文件
+        # Write back to file
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
             
-        logger.info(f"已保存答案到文件（总数: {len(data)}）")
+        logger.info(f"Answer saved to file (Total: {len(data)})")
         
     except Exception as e:
-        logger.error(f"保存答案失败: {e}")
+        logger.error(f"Failed to save answer: {e}")
 
 def validate_csv_data(csv_path: Path, logger: Logger) -> bool:
-    """验证CSV数据的完整性"""
+    """Validate the integrity of CSV data"""
     try:
         with csv_path.open("r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
             
             if not rows:
-                logger.error("CSV文件为空")
+                logger.error("CSV file is empty")
                 return False
             
-            # 检查必需的列
+            # Check required columns
             required_columns = ['question', 'prompt']
             missing_columns = [col for col in required_columns if col not in reader.fieldnames]
             if missing_columns:
-                logger.error(f"CSV缺少必需列: {missing_columns}")
+                logger.error(f"CSV missing required columns: {missing_columns}")
                 return False
             
-            # 检查数据完整性
+            # Check data integrity
             empty_questions = 0
             empty_prompts = 0
             
@@ -286,47 +286,47 @@ def validate_csv_data(csv_path: Path, logger: Logger) -> bool:
                     empty_prompts += 1
             
             if empty_questions > 0:
-                logger.warning(f"发现 {empty_questions} 个空问题")
+                logger.warning(f"Found {empty_questions} empty questions")
             if empty_prompts > 0:
-                logger.warning(f"发现 {empty_prompts} 个空prompt")
+                logger.warning(f"Found {empty_prompts} empty prompts")
             
-            logger.info(f"CSV数据验证完成：{len(rows)} 条记录")
+            logger.info(f"CSV data validation completed: {len(rows)} records")
             return True
             
     except Exception as e:
-        logger.error(f"CSV验证失败：{e}")
+        logger.error(f"CSV validation failed: {e}")
         return False
 
-# ========== 5. 主执行函数 =====================================================
+# ========== 5. Main Execution Function =====================================================
 def run_batch(model_cfg: dict, csv_path: Path):
     name = model_cfg["model_name"]
     logger = Logger(RUN_LOG)
     
-    logger.info(f"开始运行模型: {name}")
-    logger.info(f"输出文件: {OUTPUT_FILE}")
+    logger.info(f"Starting model run: {name}")
+    logger.info(f"Output file: {OUTPUT_FILE}")
     
-    # 验证CSV数据
+    # Validate CSV data
     if not validate_csv_data(csv_path, logger):
-        logger.error("CSV数据验证失败，退出运行")
+        logger.error("CSV data validation failed, exiting run")
         return
     
-    # 初始化API
+    # Initialize API
     try:
         api = OpenAI(
             api_key=model_cfg["api_key"], 
             base_url=model_cfg["base_url"]
         )
     except Exception as e:
-        logger.error(f"API初始化失败: {e}")
+        logger.error(f"API initialization failed: {e}")
         return
 
-    # --- 读取 CSV ---
+    # --- Read CSV ---
     questions = []
-    question_prompts = {}  # 直接存储问题和prompt的映射
+    question_prompts = {}  # Directly store mapping of questions and prompts
     
     with csv_path.open("r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        logger.info(f"CSV列名: {reader.fieldnames}")
+        logger.info(f"CSV column names: {reader.fieldnames}")
         
         for row in reader:
             q = row["question"]
@@ -336,62 +336,62 @@ def run_batch(model_cfg: dict, csv_path: Path):
     
     total_questions = len(questions)
     
-    # 统计信息
+    # Statistical information
     stats = {
-        "模型": name,
-        "总问题数": total_questions,
-        "跳过数": 0,
-        "新生成数": 0,
-        "重新生成数": 0,
-        "成功数": 0,
-        "失败数": 0,
-        "API调用次数": 0
+        "Model": name,
+        "Total questions": total_questions,
+        "Skipped": 0,
+        "Newly generated": 0,
+        "Regenerated": 0,
+        "Successful": 0,
+        "Failed": 0,
+        "API calls": 0
     }
     
     logger.info(f"=== 🚀 {name} ===")
-    logger.info(f"总问题数：{stats['总问题数']}")
+    logger.info(f"Total questions: {stats['Total questions']}")
     
-    # 错误记录
+    # Error records
     failed_questions = []
     
-    # 处理每道题
+    # Process each question
     for idx, q in enumerate(questions, 1):
-        print(f"\n[{idx}/{total_questions}] 检查问题: {q[:60]}…")
+        print(f"\n[{idx}/{total_questions}] Checking question: {q[:60]}…")
         
-        # 查找现有答案
+        # Find existing answer
         existing_item = find_existing_answer(q, OUTPUT_FILE)
         
         if existing_item:
-            # 检查答案是否完整且有效
+            # Check if answer is complete and valid
             is_valid, issues = is_answer_complete_and_valid(existing_item)
             
             if is_valid:
-                print(f"  ✅ 跳过（已有有效答案）")
-                stats['跳过数'] += 1
+                print(f"  ✅ Skipped (valid answer exists)")
+                stats['Skipped'] += 1
                 continue
             else:
-                print(f"  🔄 需要重新生成（问题: {', '.join(issues)}）")
-                stats['重新生成数'] += 1
+                print(f"  🔄 Needs regeneration (issues: {', '.join(issues)})")
+                stats['Regenerated'] += 1
         else:
-            print(f"  🆕 生成新答案")
-            stats['新生成数'] += 1
+            print(f"  🆕 Generating new answer")
+            stats['Newly generated'] += 1
         
-        # 生成答案
+        # Generate answer
         # direct/basic
-        stats['API调用次数'] += 1
+        stats['API calls'] += 1
         direct_answer = ""
         
-        # 尝试多次获取有效答案
-        max_attempts = 5  # 最多尝试5次
+        # Try multiple times to get valid answer
+        max_attempts = 5  # Maximum 5 attempts
         attempt = 0
         success = False
         
         while attempt < max_attempts and not success:
             attempt += 1
             if attempt > 1:
-                logger.info(f"第 {attempt} 次尝试生成direct答案...")
+                logger.info(f"Attempt {attempt} to generate direct answer...")
             
-            # 获取direct答案
+            # Get direct answer
             direct_answer, success, errors = ask(
                 api, name, q, logger,
                 timeout=model_cfg.get('timeout', 60),
@@ -401,9 +401,9 @@ def run_batch(model_cfg: dict, csv_path: Path):
             if success:
                 break
             else:
-                logger.warning(f"第 {attempt} 次尝试失败: {errors}")
+                logger.warning(f"Attempt {attempt} failed: {errors}")
                 if attempt < max_attempts:
-                    time.sleep(5 * attempt)  # 递增等待时间
+                    time.sleep(5 * attempt)  # Increasing wait time
         
         if not success:
             failed_questions.append({
@@ -412,9 +412,9 @@ def run_batch(model_cfg: dict, csv_path: Path):
                 'errors': errors,
                 'attempts': attempt
             })
-            stats['失败数'] += 1
-            logger.error(f"问题 '{q[:50]}...' 在 {attempt} 次尝试后仍然失败")
-            # 即使失败也记录，方便后续处理
+            stats['Failed'] += 1
+            logger.error(f"Question '{q[:50]}...' still failed after {attempt} attempts")
+            # Record even if failed for later processing
             direct_answer = f"[ERROR after {attempt} attempts]"
         
         item = {
@@ -425,15 +425,15 @@ def run_batch(model_cfg: dict, csv_path: Path):
             "attempts": attempt
         }
         
-        # 处理 default prompt/reply
+        # Process default prompt/reply
         if q in question_prompts:
             ptxt = question_prompts[q]
-            print(f"  · 处理 default prompt...")
+            print(f"  · Processing default prompt...")
             
             if ptxt:
-                stats['API调用次数'] += 1
+                stats['API calls'] += 1
                 
-                # 同样尝试多次
+                #同样尝试多次
                 default_attempt = 0
                 default_success = False
                 default_reply = ""
@@ -441,7 +441,7 @@ def run_batch(model_cfg: dict, csv_path: Path):
                 while default_attempt < max_attempts and not default_success:
                     default_attempt += 1
                     if default_attempt > 1:
-                        logger.info(f"default - 第 {default_attempt} 次尝试...")
+                        logger.info(f"default - Attempt {default_attempt}...")
                     
                     default_reply, default_success, errors = ask(
                         api, name, ptxt, logger,
@@ -462,7 +462,7 @@ def run_batch(model_cfg: dict, csv_path: Path):
                         'errors': errors,
                         'attempts': default_attempt
                     })
-                    stats['失败数'] += 1
+                    stats['Failed'] += 1
                     default_reply = f"[ERROR after {default_attempt} attempts]"
             else:
                 default_reply = ""
@@ -470,7 +470,7 @@ def run_batch(model_cfg: dict, csv_path: Path):
             item["default_prompt"] = ptxt
             item["default_reply"] = default_reply
         
-        # 检查是否所有回答都获取成功
+        # Check if all responses were successfully obtained
         all_success = True
         for key in item:
             if key.endswith('_reply') and '[ERROR' in str(item.get(key, '')):
@@ -478,51 +478,51 @@ def run_batch(model_cfg: dict, csv_path: Path):
                 break
         
         if all_success:
-            stats['成功数'] += 1
+            stats['Successful'] += 1
         
-        # 追加到文件
+        # Append to file
         append_to_file(item, OUTPUT_FILE, logger)
         
-        print(f"  ✅ 已保存答案")
+        print(f"  ✅ Answer saved")
         
-        # 显示当前统计
-        processed = stats['跳过数'] + stats['新生成数'] + stats['重新生成数']
-        success_rate = (stats['成功数'] / (stats['新生成数'] + stats['重新生成数']) * 100) if (stats['新生成数'] + stats['重新生成数']) > 0 else 100
-        logger.info(f"进度: {processed}/{total_questions} (跳过: {stats['跳过数']}, 新生成: {stats['新生成数']}, 重新生成: {stats['重新生成数']}, 成功率: {success_rate:.1f}%)")
+        # Display current statistics
+        processed = stats['Skipped'] + stats['Newly generated'] + stats['Regenerated']
+        success_rate = (stats['Successful'] / (stats['Newly generated'] + stats['Regenerated']) * 100) if (stats['Newly generated'] + stats['Regenerated']) > 0 else 100
+        logger.info(f"Progress: {processed}/{total_questions} (Skipped: {stats['Skipped']}, Newly generated: {stats['Newly generated']}, Regenerated: {stats['Regenerated']}, Success rate: {success_rate:.1f}%)")
 
-    # 保存失败记录
+    # Save failure records
     if failed_questions:
         failed_file = OUTPUT_DIR_1 / f"failed_questions_{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         failed_file.write_text(
             json.dumps(failed_questions, ensure_ascii=False, indent=2),
             encoding='utf-8'
         )
-        logger.warning(f"失败记录已保存到: {failed_file}")
+        logger.warning(f"Failure records saved to: {failed_file}")
     
-    # 更新统计
-    stats['最终成功率'] = f"{(stats['成功数'] / (stats['新生成数'] + stats['重新生成数']) * 100):.1f}%" if (stats['新生成数'] + stats['重新生成数']) > 0 else "100%"
+    # Update statistics
+    stats['Final success rate'] = f"{(stats['Successful'] / (stats['Newly generated'] + stats['Regenerated']) * 100):.1f}%" if (stats['Newly generated'] + stats['Regenerated']) > 0 else "100%"
     
-    # 记录最终统计
+    # Record final statistics
     logger.summary(stats)
     
-    print(f"\n✅ {name} 完成！")
-    print(f"  · 总题数: {stats['总问题数']}")
-    print(f"  · 跳过: {stats['跳过数']}")
-    print(f"  · 新生成: {stats['新生成数']}")
-    print(f"  · 重新生成: {stats['重新生成数']}")
-    print(f"  · 成功: {stats['成功数']}")
-    print(f"  · 失败: {stats['失败数']}")
-    print(f"  · 成功率: {stats['最终成功率']}")
+    print(f"\n✅ {name} completed!")
+    print(f"  · Total questions: {stats['Total questions']}")
+    print(f"  · Skipped: {stats['Skipped']}")
+    print(f"  · Newly generated: {stats['Newly generated']}")
+    print(f"  · Regenerated: {stats['Regenerated']}")
+    print(f"  · Successful: {stats['Successful']}")
+    print(f"  · Failed: {stats['Failed']}")
+    print(f"  · Success rate: {stats['Final success rate']}")
 
-# ========== 6. 执行循环 =======================================================
-print(f"📁 输出文件: {OUTPUT_FILE}")
-print(f"📄 输入CSV: {PROMPT_CSV}")
-print(f"📝 运行日志: {RUN_LOG}")
+# ========== 6. Execution Loop =======================================================
+print(f"📁 Output file: {OUTPUT_FILE}")
+print(f"📄 Input CSV: {PROMPT_CSV}")
+print(f"📝 Run log: {RUN_LOG}")
 print("-" * 60)
 
 for cfg in MODEL_CFGS:
     run_batch(cfg, PROMPT_CSV)
 
-print(f"\n🎉 全部完成！")
-print(f"📁 结果保存在: {OUTPUT_FILE}")
-print(f"📝 运行日志: {RUN_LOG}")
+print(f"\n🎉 All completed!")
+print(f"📁 Results saved in: {OUTPUT_FILE}")
+print(f"📝 Run log: {RUN_LOG}")
