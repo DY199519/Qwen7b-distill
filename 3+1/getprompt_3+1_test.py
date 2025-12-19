@@ -3,12 +3,12 @@
 """
 multmm1_build_prompts_txt.py
 ----------------------------
-读取JSON文件并生成prompt：
-  · 读取包含questions和answers的JSON文件
-  · 模糊匹配包含gemini, grok, doubao的模型
-  · 从外部文件读取prompt模板
-  · 生成prompt并写入TXT文件，每个prompt为一段
-  · 添加纠错机制，检查答案的有效性
+Read JSON files and generate prompts:
+  · Read JSON files containing questions and answers
+  · Fuzzy match models containing gemini, grok, doubao
+  · Read prompt templates from external files
+  · Generate prompts and write to TXT files, each prompt as a paragraph
+  · Add error correction mechanism to check the validity of answers
 """
 
 import json
@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 from typing import Dict, List, Tuple, Optional
 
-# === 1. 路径配置 ===
+# === 1. Path Configuration ===
 BASE_DIR = Path(r"D:\project7\prompt")
 BASE_DIR_1 = Path(r"D:\project7")
 BASE_DIR_2 = Path(r"D:\project7\MM\result")
@@ -25,157 +25,157 @@ BASE_DIR_4 = Path(r"D:\qwensft\testquestion")
 
 BASE_DIR
 
-# 使用第二个JSON文件
+# Use the second JSON file
 json_path = BASE_DIR_4 / "multi_model_answersTest500.json"
 
-# Prompt 文件路径
+# Prompt file path
 PROMPT_FILE = BASE_DIR / "prompt-3+1test.txt"
 
-# 输出文件（改为txt）
+# Output file (changed to txt)
 OUT_TXT = BASE_DIR_3 / "final_prompt_3+1-Test.txt"
-ERROR_LOG = BASE_DIR_3 / "error_log.txt"  # 错误日志文件
+ERROR_LOG = BASE_DIR_3 / "error_log.txt"  # Error log file
 
-# === 2. 纠错配置 ===
+# === 2. Error Correction Configuration ===
 class ErrorChecker:
-    """答案纠错检查器"""
+    """Answer error correction checker"""
     
-    # 最小答案长度
+    # Minimum answer length
     MIN_ANSWER_LENGTH = 10
     
-    # 最大答案长度（可能是错误）
+    # Maximum answer length (may be an error)
     MAX_ANSWER_LENGTH = 10000
     
-    # 常见错误模式
+    # Common error patterns
     ERROR_PATTERNS = [
-        r'^error:',  # 以error开头
-        r'^exception:',  # 以exception开头
-        r'^\s*$',  # 纯空白
-        r'^null$',  # null值
-        r'^undefined$',  # undefined值
+        r'^error:',  # Starts with error
+        r'^exception:',  # Starts with exception
+        r'^\s*$',  # Pure whitespace
+        r'^null$',  # null value
+        r'^undefined$',  # undefined value
         r'^N/A$',  # N/A
-        r'^\[.*error.*\]$',  # 包含error的方括号内容
-        r'^\{.*error.*\}$',  # 包含error的花括号内容
+        r'^\[.*error.*\]$',  # Content in square brackets containing error
+        r'^\{.*error.*\}$',  # Content in curly brackets containing error
     ]
     
-    # 可疑模式（警告但不过滤）
+    # Suspicious patterns (warn but not filter)
     WARNING_PATTERNS = [
-        r'^.{1,9}$',  # 过短的答案（小于10字符）
-        r'^\d+$',  # 纯数字
-        r'^[^\u4e00-\u9fa5a-zA-Z]+$',  # 没有中文或英文字母
-        r'(.)\1{10,}',  # 重复字符超过10次
+        r'^.{1,9}$',  # Overly short answers (less than 10 characters)
+        r'^\d+$',  # Pure numbers
+        r'^[^\u4e00-\u9fa5a-zA-Z]+$',  # No Chinese or English letters
+        r'(.)\1{10,}',  # Repeated characters more than 10 times
     ]
     
     @classmethod
     def check_context_format(cls, context: str) -> Tuple[bool, List[str]]:
         """
-        检查生成的上下文格式是否正确
-        确保每个"回答X："后面都有实际内容
+        Check if the generated context format is correct
+        Ensure each "Answer X:" has actual content following it
         """
         issues = []
         
-        # 提取所有回答部分
-        pattern = r'回答(\d+)：(.*?)(?=回答\d+：|$)'
+        # Extract all answer parts
+        pattern = r'Answer(\d+)：(.*?)(?=Answer\d+：|$)'
         matches = re.findall(pattern, context, re.DOTALL)
         
         if not matches:
-            issues.append("未找到标准的'回答X：'格式")
+            issues.append("Standard 'Answer X:' format not found")
             return False, issues
         
-        # 检查每个回答
+        # Check each answer
         for num, content in matches:
             content = content.strip()
             if not content:
-                issues.append(f"回答{num}为空")
+                issues.append(f"Answer {num} is empty")
             elif len(content) < cls.MIN_ANSWER_LENGTH:
-                issues.append(f"回答{num}内容过短 ({len(content)}字符)")
+                issues.append(f"Answer {num} content is too short ({len(content)} characters)")
         
-        # 检查回答编号是否连续
+        # Check if answer numbers are consecutive
         numbers = [int(num) for num, _ in matches]
         numbers.sort()
         expected = list(range(1, len(numbers) + 1))
         if numbers != expected:
-            issues.append(f"回答编号不连续: {numbers}")
+            issues.append(f"Answer numbers are not consecutive: {numbers}")
         
         return len(issues) == 0, issues
     
     @classmethod
     def check_answer(cls, answer: str, question: str = "") -> Tuple[bool, str, List[str]]:
         """
-        检查答案是否有效
-        返回: (是否有效, 清理后的答案, 错误/警告列表)
+        Check if the answer is valid
+        Returns: (is_valid, cleaned_answer, error/warning list)
         """
         errors = []
         warnings = []
         
-        # 基本检查
+        # Basic check
         if not answer:
-            errors.append("答案为空")
+            errors.append("Answer is empty")
             return False, "", errors
         
-        # 类型检查
+        # Type check
         if not isinstance(answer, str):
-            errors.append(f"答案类型错误: {type(answer)}")
+            errors.append(f"Answer type error: {type(answer)}")
             return False, "", errors
         
-        # 清理答案（去除首尾空白）
+        # Clean the answer (remove leading and trailing whitespace)
         cleaned_answer = answer.strip()
         
-        # 长度检查
+        # Length check
         if len(cleaned_answer) < cls.MIN_ANSWER_LENGTH:
-            warnings.append(f"答案过短 ({len(cleaned_answer)} 字符)")
+            warnings.append(f"Answer is too short ({len(cleaned_answer)} characters)")
         elif len(cleaned_answer) > cls.MAX_ANSWER_LENGTH:
-            warnings.append(f"答案过长 ({len(cleaned_answer)} 字符)")
+            warnings.append(f"Answer is too long ({len(cleaned_answer)} characters)")
         
-        # 错误模式检查
+        # Error pattern check
         for pattern in cls.ERROR_PATTERNS:
             if re.match(pattern, cleaned_answer, re.IGNORECASE):
-                errors.append(f"匹配错误模式: {pattern}")
+                errors.append(f"Matches error pattern: {pattern}")
                 return False, cleaned_answer, errors
         
-        # 警告模式检查
+        # Warning pattern check
         for pattern in cls.WARNING_PATTERNS:
             if re.match(pattern, cleaned_answer, re.IGNORECASE):
-                warnings.append(f"匹配可疑模式: {pattern}")
+                warnings.append(f"Matches suspicious pattern: {pattern}")
         
-        # 特殊字符检查
+        # Special character check
         if cleaned_answer.count('\n') > 50:
-            warnings.append("包含过多换行符")
+            warnings.append("Contains too many line breaks")
         
         if cleaned_answer.count(' ') / len(cleaned_answer) > 0.5:
-            warnings.append("空格比例过高")
+            warnings.append("Too high proportion of spaces")
         
-        # 返回结果
+        # Return result
         is_valid = len(errors) == 0
         all_issues = errors + warnings
         
         return is_valid, cleaned_answer, all_issues
 
-# === 3. 读取 Prompt 模板 ===
+# === 3. Read Prompt Template ===
 def load_prompt_template():
-    """从文件读取 prompt 模板"""
+    """Read prompt template from file"""
     try:
         with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
             template = f.read().strip()
-            print(f"✓ 成功读取 prompt 模板：{PROMPT_FILE}")
+            print(f"✓ Successfully read prompt template: {PROMPT_FILE}")
             return template
     except FileNotFoundError:
-        print(f"⚠️ 警告：未找到 prompt 文件：{PROMPT_FILE}")
-        # 使用默认模板作为备份
-        default_template = '请回答："{q}"，基于以下回答对你的答案进行完善：{ctx}。'
-        print(f"  使用默认 prompt 模板")
+        print(f"⚠️ Warning: Prompt file not found: {PROMPT_FILE}")
+        # Use default template as backup
+        default_template = 'Please answer: "{q}", based on the following answers to improve your answer: {ctx}.'
+        print(f"  Using default prompt template")
         return default_template
 
-# === 4. 工具函数 ===
+# === 4. Utility Functions ===
 def extract_answers_fuzzy(question_data: Dict, question: str, error_log: List[Dict]) -> Tuple[List[str], List[str], Dict]:
     """
-    模糊匹配包含 gemini, grok, doubao 的模型并提取答案
-    添加纠错机制
+    Fuzzy match models containing gemini, grok, doubao and extract answers
+    Add error correction mechanism
     """
     answers = []
     found_models = []
     target_keywords = ['gemini', 'grok', 'doubao']
     
-    # 统计信息
+    # Statistical information
     stats = {
         'total_models': 0,
         'matched_models': 0,
@@ -188,26 +188,26 @@ def extract_answers_fuzzy(question_data: Dict, question: str, error_log: List[Di
         for model_name, model_answers in question_data["answers"].items():
             stats['total_models'] += 1
             
-            # 模糊匹配：检查模型名是否包含目标关键词
+            # Fuzzy match: check if model name contains target keywords
             model_lower = model_name.lower()
             for keyword in target_keywords:
                 if keyword in model_lower:
                     stats['matched_models'] += 1
                     
                     if model_answers and len(model_answers) > 0:
-                        # 只取第一个答案
+                        # Only take the first answer
                         raw_answer = model_answers[0].get("answer", "")
                         
-                        # 纠错检查
+                        # Error correction check
                         is_valid, cleaned_answer, issues = ErrorChecker.check_answer(raw_answer, question)
                         
                         if is_valid:
-                            if cleaned_answer:  # 再次确认清理后的答案不为空
+                            if cleaned_answer:  # Double confirm cleaned answer is not empty
                                 answers.append(cleaned_answer)
                                 found_models.append(model_name)
                                 stats['valid_answers'] += 1
                                 
-                                # 如果有警告，记录但不阻止使用
+                                # If there are warnings, record but do not prevent use
                                 if issues:
                                     stats['warnings'] += 1
                                     error_log.append({
@@ -226,16 +226,16 @@ def extract_answers_fuzzy(question_data: Dict, question: str, error_log: List[Di
                                 'issues': issues,
                                 'raw_answer': raw_answer[:50] + '...' if len(raw_answer) > 50 else raw_answer
                             })
-                    break  # 找到匹配就跳出内层循环
+                    break  # Exit inner loop once a match is found
     
     return answers, found_models, stats
 
 def build_prompts(questions_data: Dict, prompt_template: str) -> Tuple[List[str], List[Dict]]:
-    """构造prompt列表，返回prompt列表和错误日志"""
+    """Construct prompt list, return prompt list and error log"""
     prompts = []
     error_log = []
     
-    # 全局统计
+    # Global statistics
     global_stats = {
         'total_questions': 0,
         'matched_questions': 0,
@@ -245,15 +245,15 @@ def build_prompts(questions_data: Dict, prompt_template: str) -> Tuple[List[str]
         'context_format_errors': 0
     }
     
-    print(f"\n📋 开始处理数据...")
+    print(f"\n📋 Starting data processing...")
     
     for question, question_data in questions_data.items():
         global_stats['total_questions'] += 1
         
-        # 提取模糊匹配的答案（带纠错）
+        # Extract fuzzy matched answers (with error correction)
         answers, found_models, stats = extract_answers_fuzzy(question_data, question, error_log)
         
-        # 更新全局统计
+        # Update global statistics
         global_stats['total_errors'] += stats['invalid_answers']
         global_stats['total_warnings'] += stats['warnings']
         
@@ -263,10 +263,10 @@ def build_prompts(questions_data: Dict, prompt_template: str) -> Tuple[List[str]
         
         global_stats['matched_questions'] += 1
         
-        # 构建上下文
-        ctx = "\n".join(f"回答{i+1}：{ans}" for i, ans in enumerate(answers))
+        # Build context
+        ctx = "\n".join(f"Answer {i+1}：{ans}" for i, ans in enumerate(answers))
         
-        # 检查上下文格式
+        # Check context format
         ctx_valid, ctx_issues = ErrorChecker.check_context_format(ctx)
         if not ctx_valid:
             global_stats['context_format_errors'] += 1
@@ -277,12 +277,12 @@ def build_prompts(questions_data: Dict, prompt_template: str) -> Tuple[List[str]
                 'issues': ctx_issues,
                 'context_preview': ctx[:100] + '...' if len(ctx) > 100 else ctx
             })
-            # 如果上下文格式有严重问题，跳过这个问题
-            if any("为空" in issue for issue in ctx_issues):
+            # If there are serious issues with context format, skip this question
+            if any("is empty" in issue for issue in ctx_issues):
                 global_stats['skipped_questions'] += 1
                 continue
         
-        # 生成 prompt
+        # Generate prompt
         try:
             prompt = prompt_template.format(q=question, ctx=ctx)
             prompts.append(prompt)
@@ -291,149 +291,149 @@ def build_prompts(questions_data: Dict, prompt_template: str) -> Tuple[List[str]
                 'type': 'prompt_generation_error',
                 'question': question[:50] + '...' if len(question) > 50 else question,
                 'model': ",".join(found_models),
-                'issues': [f"Prompt生成失败: {str(e)}"],
+                'issues': [f"Prompt generation failed: {str(e)}"],
                 'context_preview': ctx[:100] + '...' if len(ctx) > 100 else ctx
             })
             continue
         
-        # 显示进度
+        # Display progress
         if global_stats['matched_questions'] % 10 == 0:
-            print(f"  · 已处理 {global_stats['matched_questions']} 个匹配的问题")
+            print(f"  · Processed {global_stats['matched_questions']} matched questions")
     
-    # 打印统计信息
-    print(f"\n📊 处理统计：")
-    print(f"  · 总问题数: {global_stats['total_questions']}")
-    print(f"  · 匹配问题数: {global_stats['matched_questions']}")
-    print(f"  · 跳过问题数: {global_stats['skipped_questions']}")
-    print(f"  · 错误答案数: {global_stats['total_errors']}")
-    print(f"  · 警告数: {global_stats['total_warnings']}")
-    print(f"  · 上下文格式错误: {global_stats['context_format_errors']}")
-    print(f"  · 生成prompt数: {len(prompts)}")
+    # Print statistical information
+    print(f"\n📊 Processing statistics：")
+    print(f"  · Total questions: {global_stats['total_questions']}")
+    print(f"  · Matched questions: {global_stats['matched_questions']}")
+    print(f"  · Skipped questions: {global_stats['skipped_questions']}")
+    print(f"  · Error answers: {global_stats['total_errors']}")
+    print(f"  · Warnings: {global_stats['total_warnings']}")
+    print(f"  · Context format errors: {global_stats['context_format_errors']}")
+    print(f"  · Generated prompts: {len(prompts)}")
     
     return prompts, error_log
 
 def save_error_log(error_log: List[Dict], filepath: Path):
-    """保存错误日志"""
+    """Save error log"""
     if not error_log:
-        print("  · 没有错误或警告需要记录")
+        print("  · No errors or warnings to record")
         return
     
     with open(filepath, 'w', encoding='utf-8') as f:
-        f.write("=== 答案纠错日志 ===\n\n")
+        f.write("=== Answer Error Correction Log ===\n\n")
         
-        # 分别统计错误、警告和上下文错误
+        # Separate statistics for errors, warnings and context errors
         errors = [e for e in error_log if e['type'] == 'error']
         warnings = [e for e in error_log if e['type'] == 'warning']
         context_errors = [e for e in error_log if e['type'] == 'context_error']
         prompt_errors = [e for e in error_log if e['type'] == 'prompt_generation_error']
         
-        # 写入错误
+        # Write errors
         if errors:
-            f.write(f"### 错误 ({len(errors)} 项) ###\n\n")
+            f.write(f"### Errors ({len(errors)} items) ###\n\n")
             for i, error in enumerate(errors, 1):
-                f.write(f"{i}. 问题: {error['question']}\n")
-                f.write(f"   模型: {error['model']}\n")
-                f.write(f"   错误: {', '.join(error['issues'])}\n")
-                f.write(f"   原始答案: {error.get('raw_answer', 'N/A')}\n")
+                f.write(f"{i}. Question: {error['question']}\n")
+                f.write(f"   Model: {error['model']}\n")
+                f.write(f"   Errors: {', '.join(error['issues'])}\n")
+                f.write(f"   Raw answer: {error.get('raw_answer', 'N/A')}\n")
                 f.write("-" * 50 + "\n")
         
-        # 写入上下文格式错误
+        # Write context format errors
         if context_errors:
-            f.write(f"\n### 上下文格式错误 ({len(context_errors)} 项) ###\n\n")
+            f.write(f"\n### Context Format Errors ({len(context_errors)} items) ###\n\n")
             for i, error in enumerate(context_errors, 1):
-                f.write(f"{i}. 问题: {error['question']}\n")
-                f.write(f"   模型: {error['model']}\n")
-                f.write(f"   问题: {', '.join(error['issues'])}\n")
-                f.write(f"   上下文预览: {error.get('context_preview', 'N/A')}\n")
+                f.write(f"{i}. Question: {error['question']}\n")
+                f.write(f"   Model: {error['model']}\n")
+                f.write(f"   Issues: {', '.join(error['issues'])}\n")
+                f.write(f"   Context preview: {error.get('context_preview', 'N/A')}\n")
                 f.write("-" * 50 + "\n")
         
-        # 写入Prompt生成错误
+        # Write Prompt generation errors
         if prompt_errors:
-            f.write(f"\n### Prompt生成错误 ({len(prompt_errors)} 项) ###\n\n")
+            f.write(f"\n### Prompt Generation Errors ({len(prompt_errors)} items) ###\n\n")
             for i, error in enumerate(prompt_errors, 1):
-                f.write(f"{i}. 问题: {error['question']}\n")
-                f.write(f"   模型: {error['model']}\n")
-                f.write(f"   错误: {', '.join(error['issues'])}\n")
+                f.write(f"{i}. Question: {error['question']}\n")
+                f.write(f"   Model: {error['model']}\n")
+                f.write(f"   Errors: {', '.join(error['issues'])}\n")
                 f.write("-" * 50 + "\n")
         
-        # 写入警告
+        # Write warnings
         if warnings:
-            f.write(f"\n### 警告 ({len(warnings)} 项) ###\n\n")
+            f.write(f"\n### Warnings ({len(warnings)} items) ###\n\n")
             for i, warning in enumerate(warnings, 1):
-                f.write(f"{i}. 问题: {warning['question']}\n")
-                f.write(f"   模型: {warning['model']}\n")
-                f.write(f"   警告: {', '.join(warning['issues'])}\n")
-                f.write(f"   答案预览: {warning.get('answer_preview', 'N/A')}\n")
+                f.write(f"{i}. Question: {warning['question']}\n")
+                f.write(f"   Model: {warning['model']}\n")
+                f.write(f"   Warnings: {', '.join(warning['issues'])}\n")
+                f.write(f"   Answer preview: {warning.get('answer_preview', 'N/A')}\n")
                 f.write("-" * 50 + "\n")
     
-    print(f"  · 错误日志已保存到: {filepath}")
-    print(f"    - 答案错误: {len(errors)} 项")
-    print(f"    - 上下文格式错误: {len(context_errors)} 项")
-    print(f"    - Prompt生成错误: {len(prompt_errors)} 项")
-    print(f"    - 警告: {len(warnings)} 项")
+    print(f"  · Error log saved to: {filepath}")
+    print(f"    - Answer errors: {len(errors)} items")
+    print(f"    - Context format errors: {len(context_errors)} items")
+    print(f"    - Prompt generation errors: {len(prompt_errors)} items")
+    print(f"    - Warnings: {len(warnings)} items")
 
-# === 5. 主程序 ===
+# === 5. Main Program ===
 def main():
-    print("📖 开始处理数据...")
-    print(f"  · 工作目录：{BASE_DIR}")
-    print(f"  · 模糊匹配模型：gemini, grok, doubao")
-    print(f"  · 输出格式：TXT文件（每个prompt为一段）")
+    print("📖 Starting data processing...")
+    print(f"  · Working directory: {BASE_DIR}")
+    print(f"  · Fuzzy matching models: gemini, grok, doubao")
+    print(f"  · Output format: TXT file (each prompt as a paragraph)")
     
-    # 读取 prompt 模板
+    # Read prompt template
     prompt_template = load_prompt_template()
     
-    # 读取 JSON 数据
-    print(f"\n📖 读取 JSON 文件：{json_path}")
+    # Read JSON data
+    print(f"\n📖 Reading JSON file: {json_path}")
     try:
         with open(json_path, encoding="utf-8") as f:
             data = json.load(f)
         
-        # 检查数据结构
+        # Check data structure
         if "questions" in data:
             questions_data = data["questions"]
-            print(f"  · 找到 {len(questions_data)} 个问题")
+            print(f"  · Found {len(questions_data)} questions")
         else:
-            print("❌ 错误：JSON文件中没有找到 'questions' 字段")
+            print("❌ Error: 'questions' field not found in JSON file")
             return
             
     except FileNotFoundError:
-        print(f"❌ 错误：找不到文件 {json_path}")
+        print(f"❌ Error: File not found {json_path}")
         return
     except json.JSONDecodeError as e:
-        print(f"❌ 错误：JSON解析失败：{e}")
+        print(f"❌ Error: JSON parsing failed: {e}")
         return
     
-    # === 生成prompts并写入TXT文件 ===
-    print("\n⚙️ 生成 prompt 列表...")
+    # === Generate prompts and write to TXT file ===
+    print("\n⚙️ Generating prompt list...")
     all_prompts, error_log = build_prompts(questions_data, prompt_template)
     
     if all_prompts:
-        # 写入TXT文件
-        print(f"\n📝 写入 TXT 文件：{OUT_TXT}")
+        # Write to TXT file
+        print(f"\n📝 Writing to TXT file: {OUT_TXT}")
         with open(OUT_TXT, "w", encoding="utf-8") as f:
             for i, prompt in enumerate(all_prompts):
                 f.write(prompt)
-                # 如果不是最后一个prompt，添加分隔线
+                # Add separator if not the last prompt
                 if i < len(all_prompts) - 1:
                     f.write("\n-------------------\n")
         
-        print(f"✅ 成功写入 {len(all_prompts)} 个prompt")
+        print(f"✅ Successfully wrote {len(all_prompts)} prompts")
         
-        # 保存错误日志
-        print(f"\n📝 保存错误日志...")
+        # Save error log
+        print(f"\n📝 Saving error log...")
         save_error_log(error_log, ERROR_LOG)
         
-        # 统计信息
+        # Statistical information
         total_chars = sum(len(prompt) for prompt in all_prompts)
         avg_chars = total_chars // len(all_prompts) if all_prompts else 0
-        print(f"\n📊 内容统计：")
-        print(f"  · 总prompt数量: {len(all_prompts)}")
-        print(f"  · 总字符数: {total_chars:,}")
-        print(f"  · 平均每个prompt: {avg_chars} 字符")
+        print(f"\n📊 Content statistics：")
+        print(f"  · Total prompt count: {len(all_prompts)}")
+        print(f"  · Total characters: {total_chars:,}")
+        print(f"  · Average per prompt: {avg_chars} characters")
     else:
-        print("⚠️ 警告：没有生成任何prompt")
+        print("⚠️ Warning: No prompts generated")
     
-    print("\n🎉 完成！")
+    print("\n🎉 Completed!")
 
 if __name__ == "__main__":
     main()
