@@ -3,12 +3,12 @@
 """
 generate_multi_answers.py
 -------------------------
-读取 generated_results_multi_model.json，
-对每个模型 / 每个核心问题生成（或复用） basic_answer 和
-answer_with_context，并保存到 final_ans_multi_sm.json。
+Reads generated_results_multi_model.json,
+generates (or reuses) basic_answer and answer_with_context for each model/each core question,
+and saves them to final_ans_multi_sm.json.
 
-若 grouped_answers.json 中已存在对应 basic_answer，则直接复用，
-避免重复生成；只有缺失时才会调用 API。
+If the corresponding basic_answer already exists in grouped_answers.json, it will be reused
+to avoid duplicate generation; the API will only be called when it is missing.
 """
 
 import os
@@ -20,14 +20,14 @@ from openai import OpenAI
 import httpx
 
 
-# ========= 路径 & 常量 ========================================================
+# ========= Paths & Constants ========================================================
 INPUT_FILE     = Path(r"D:\project\generated_results_multi_model.json")
-BASIC_ANS_FILE = Path(r"D:\project\grouped_answers.json")           # ← 已有 basic 答案
+BASIC_ANS_FILE = Path(r"D:\project\grouped_answers.json")           # ← Existing basic answers
 OUTPUT_DIR     = Path(r"D:\project")
 OUTPUT_FILE    = OUTPUT_DIR / "final_ans_multi_sm.json"
 
 
-# ========= 模型配置（完整） ===================================================
+# ========= Model Configuration (Complete) ===================================================
 models_config: Dict[str, Dict[str, str]] = {
     "gemini-2.5-flash-preview-04-17-thinking": {
         "api_key": "sk-VJrRRrYljSfcLQPKD2ocOw8NrKaFOPsTszZy1gb5qWJixq2Y",
@@ -60,9 +60,9 @@ models_config: Dict[str, Dict[str, str]] = {
 }
 
 
-# ========= 工具函数 ===========================================================
+# ========= Utility Functions ===========================================================
 def load_basic_answer_map(filepath: Path) -> Dict[str, Dict[str, str]]:
-    """读取 grouped_answers.json，返回映射：{核心问题: {model_name: basic_answer, ...}, ...}"""
+    """Reads grouped_answers.json and returns a mapping: {core_question: {model_name: basic_answer, ...}, ...}"""
     if not filepath.exists():
         return {}
 
@@ -82,7 +82,7 @@ def get_completion(client: OpenAI,
                    prompt: str,
                    attempt: int = 1,
                    max_attempts: int = 10) -> str:
-    """带重试的 OpenAI API 请求。"""
+    """OpenAI API request with retry mechanism."""
     try:
         rsp = client.chat.completions.create(
             model=model_name,
@@ -91,15 +91,15 @@ def get_completion(client: OpenAI,
         return rsp.choices[0].message.content
     except Exception as e:
         if attempt < max_attempts:
-            print(f"⚠️ 请求失败，重试中 ({attempt}/{max_attempts})... 原因：{e}")
+            print(f"⚠️ Request failed, retrying ({attempt}/{max_attempts})... Reason: {e}")
             time.sleep(2)
             return get_completion(client, model_name, prompt,
                                   attempt + 1, max_attempts)
-        print(f"❌ 最终失败：{e}")
+        print(f"❌ Final failure: {e}")
         return f"ERROR: {str(e)}"
 
 
-# ========= 主流程 =============================================================
+# ========= Main Process =============================================================
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -111,11 +111,11 @@ def main() -> None:
 
     for model_block in raw_data:
         model_name = model_block["model_name"]
-        print(f"\n{'='*60}\n🔍 开始处理模型：{model_name}\n{'='*60}")
+        print(f"\n{'='*60}\n🔍 Starting processing model: {model_name}\n{'='*60}")
 
         config = models_config.get(model_name)
         if not config:
-            print(f"⚠️ 未找到模型配置，跳过：{model_name}")
+            print(f"⚠️ No model configuration found, skipping: {model_name}")
             continue
 
         client = OpenAI(
@@ -133,33 +133,33 @@ def main() -> None:
 
             core_question = core_q_data[0]
             sum_list_data = entry.get("sum_list", [])
-            print(f"\n➡️ 问题：{core_question}")
+            print(f"\n➡️ Question: {core_question}")
 
-            # -------- 构造 context 信息（跳过超过30字符的部分） --------
+            # -------- Construct context information (skip parts exceeding 30 characters) --------
             context_parts = []
             for grp in sum_list_data:
                 if not grp or not isinstance(grp, list) or len(grp) < 2:
                     continue
-                part = f"{grp[0]}领域：{'、'.join(grp[1:])}"
+                part = f"{grp[0]} field: {'、'.join(grp[1:])}"  #保留中文顿号，因为是内容分隔符
                 if len(part) > 30:
-                    print(f"⚠️ 跳过过长因素：{part}")
+                    print(f"⚠️ Skipping overlong factor: {part}")
                     continue
                 context_parts.append(part)
-            context_str = "；".join(context_parts)
+            context_str = "；".join(context_parts)  #保留中文分号，因为是内容分隔符
 
             # -------- 1. basic answer --------
             basic_ans = basic_answer_map.get(core_question, {}).get(model_name)
             if basic_ans is None:
-                prompt_basic = f"请回答：\"{core_question}\"。"
+                prompt_basic = f"Please answer: \"{core_question}\"."
                 basic_ans = get_completion(client, model_name, prompt_basic)
-                print("    （未找到现成 basic_answer，已调用 API 补充）")
+                print("    (No existing basic_answer found, API called to supplement)")
 
             # -------- 2. answer_with_context --------
-            prompt_context = (f"请回答：\"{core_question}\"，结合以下信息，"
-                              f"参考以下重要因素进行作答，因素按重要性排序：{context_str}。")
+            prompt_context = (f"Please answer: \"{core_question}\", combining the following information, "
+                              f"answer with reference to the following important factors, sorted by importance: {context_str}.")
             context_ans = get_completion(client, model_name, prompt_context)
 
-            # -------- 记录结果 --------
+            # -------- Record results --------
             model_results.append({
                 "core_question": core_question,
                 "basic_answer": basic_ans,
@@ -171,15 +171,15 @@ def main() -> None:
             "model_name": model_name,
             "results": model_results
         })
-        print(f"\n✅ 模型 {model_name} 全部问题处理完成！")
+        print(f"\n✅ All questions processed for model {model_name}!")
 
-    # -------- 保存到文件 --------
+    # -------- Save to file --------
     with OUTPUT_FILE.open("w", encoding="utf-8") as f:
         json.dump(all_results, f, ensure_ascii=False, indent=4)
 
-    print(f"\n🎉 所有模型处理完成，结果已保存至：{OUTPUT_FILE}")
+    print(f"\n🎉 All models processed, results saved to: {OUTPUT_FILE}")
 
 
-# ========= 入口 ==============================================================
+# ========= Entry Point ==============================================================
 if __name__ == "__main__":
     main()
