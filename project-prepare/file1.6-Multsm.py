@@ -1,4 +1,4 @@
-# 导入所需的库
+# Import required libraries
 from openai import OpenAI
 import os
 import httpx
@@ -6,137 +6,137 @@ import json
 import re
 import time
 
-# ====== 辅助函数 ======
-# 去除编号等前缀
+# ====== Helper Functions ======
+# Remove numbering and other prefixes
 def clean_line_prefix(line):
     return re.sub(r'^\s*(\d+\.\s*|\d+[\.\u3001Z\s]*|[\u2460-\u2469]|[一二三四五六七八九十][、\.]?)\s*', '', line).strip()
 
-# 去除英文、数字、符号，只保留中文
+# Remove English, numbers, symbols, keep only Chinese characters
 def remove_noise(line):
     return ''.join(re.findall(r'[\u4e00-\u9fa5]+', line))
 
-# ====== 示例问题列表（仅保留一条测试，可自行扩展） ======
+# ====== Example Question List (only one test retained, can be expanded) ======
 questions = [
-["物理如何影响社会发展？请结合数学模型，并考虑生物因素进行分析？", ["生物", "社会学", "物理", "数学"]],
-["地理信息系统在农业规划中的应用如何体现数学统计与化学分析的结合？", ["地理", "农业", "数学", "化学"]],
-["以新冠疫情为例，分析医疗资源分配模型如何融合社会学公平原则与数学优化算法？", ["医疗", "社会学", "数学"]],
-["量子力学原理在生物光合作用研究中的数学建模方法及历史演变", ["物理", "生物", "数学", "历史"]],
-["金融市场的混沌现象与物理中的非线性系统有何类比关系？请结合数学模型说明", ["金融", "物理", "数学"]],
-["青藏高原隆升对气候影响的模拟需整合哪些地理、化学与数学方法？", ["地理", "化学", "数学"]],
-["抗生素耐药性传播模型如何结合社会学行为分析与生物网络计算？", ["生物", "医疗", "社会学", "数学"]],
-["从历史文献看中国古代水利工程如何体现物理力学与农业实践的结合？", ["历史", "物理", "农业"]],
-["城市热岛效应评估中地理遥感数据与化学污染物扩散模型的数学整合方法", ["地理", "化学", "数学"]],
-["社会学中的群体动力学如何借鉴物理学相变理论和数学微分方程？", ["社会学", "物理", "数学"]],
-["光合作用量子效率的数学建模如何推动农业光生物反应器设计？", ["生物", "农业", "数学", "物理"]],
-["金融风险评估中的蒙特卡洛模拟与物理粒子输运模型有何异同？", ["金融", "物理", "数学"]],
-["基于地理信息系统的农业病虫害预警模型需整合哪些化学与数学方法？", ["地理", "农业", "化学", "数学"]],
-["病毒变异预测的生物信息学模型如何结合社会学传播网络分析？", ["生物", "医疗", "社会学", "数学"]],
-["从历史视角看炼金术如何促进化学学科与物理冶金技术的早期融合？", ["历史", "化学", "物理"]],
-["医疗影像分割的深度学习模型需融合哪些生物解剖学与物理成像原理？", ["医疗", "生物", "物理", "数学"]],
-["金融衍生品定价模型与物理中的扩散方程存在怎样的数学关联？", ["金融", "物理", "数学"]],
-["土壤重金属污染修复方案如何综合地理空间分析与化学稳定化技术？", ["地理", "农业", "化学"]],
-["社会舆论传播的相变模型如何借鉴物理学中的伊辛模型？", ["社会学", "物理", "数学"]],
-["农业害虫种群预测的数学模型需考虑哪些生物气候与地理因素？", ["农业", "生物", "地理", "数学"]],
-["核磁共振技术在生物医学中的应用如何体现物理原理与化学分析的结合？", ["物理", "化学", "医疗"]],
-["金融系统性风险监测需要哪些社会网络分析与数学统计方法？", ["金融", "社会学", "数学"]],
-["古气候重建中的冰芯数据如何反映化学成分与地理纬度的关联性？", ["地理", "化学", "历史"]],
-["蛋白质折叠模拟的多尺度模型如何融合物理分子动力学与数学优化算法？", ["生物", "物理", "数学"]],
-["智慧农业中的作物生长模型需整合哪些化学肥料动力学与地理环境参数？", ["农业", "化学", "地理", "数学"]],
-["医疗资源时空配置的优化模型如何平衡社会公平与物流效率？", ["医疗", "社会学", "地理", "数学"]],
-["从历史文献分析看丝绸之路贸易如何促进农业物种迁移与地理认知发展？", ["历史", "农业", "地理"]],
-["金融市场的高频交易策略如何应用物理学中的随机过程理论？", ["金融", "物理", "数学"]],
-["大气PM2.5污染的溯源分析需要哪些化学指纹识别与地理扩散模型？", ["化学", "地理", "数学"]],
-["社会学中的城市空间分异研究如何结合地理空间分析与统计建模？", ["社会学", "地理", "数学"]],
-["量子生物学在酶催化反应中的数学建模方法及实验验证", ["物理", "生物", "数学", "化学"]],
-["精准农业中的变量施肥系统如何整合地理GIS数据与作物营养数学模型？", ["农业", "地理", "数学", "化学"]],
-["医疗废物处理的生命周期评估需考虑哪些社会学行为因素与化学降解机制？", ["医疗", "社会学", "化学"]],
-["古代航海技术发展如何促进地理大发现与历史进程的互动？", ["历史", "地理", "物理"]],
-["金融保险精算模型如何借鉴生物学中的寿命表分析方法？", ["金融", "生物", "数学"]],
-["土壤碳循环模型中的微生物作用如何通过数学网络分析量化？", ["农业", "生物", "数学", "化学"]],
-["医院选址优化模型需平衡哪些地理可达性与社会公平性指标？", ["医疗", "地理", "社会学", "数学"]],
-["从物理学能量守恒视角分析农业生态系统的物质循环效率", ["农业", "物理", "生物", "数学"]],
-["化学药物研发中的分子对接模拟如何结合生物受体动力学与数学优化？", ["化学", "生物", "医疗", "数学"]],
-["社交媒体舆情监控的数学模型如何反映社会学群体行为特征？", ["社会学", "数学", "计算机"]],
-["历史瘟疫传播的地理通道分析与现代传染病模型的演化关联", ["历史", "地理", "医疗", "数学"]],
-["金融衍生品市场波动率曲面拟合需要哪些物理波动理论与数学方法？", ["金融", "物理", "数学"]],
-["作物遗传改良的分子设计如何整合生物基因网络与农业表型数学模型？", ["农业", "生物", "数学"]],
-["医疗放射治疗计划系统需考虑哪些物理剂量分布与生物组织响应？", ["医疗", "物理", "生物"]],
-["社会学中的代际流动研究如何应用数学马尔可夫链模型？", ["社会学", "数学"]],
-["地理加权回归在城市房价分析中的化学污染因子修正方法", ["地理", "化学", "数学", "金融"]],
-["量子计算在药物分子模拟中的物理实现与数学算法挑战", ["物理", "化学", "生物", "数学"]],
-["农业水资源管理需平衡地理空间分布与哪些化学节水技术？", ["农业", "地理", "化学"]],
-["医院感染控制模型如何结合社会学人际接触网络与生物传播动力学？", ["医疗", "社会学", "生物", "数学"]],
-["从历史档案看工业革命时期物理学突破对化学产业化的推动作用", ["历史", "物理", "化学"]],
-["金融信用评分模型中的社会学特征工程如何优化数学分类算法？", ["金融", "社会学", "数学"]],
-["大气臭氧层空洞修复方案需整合哪些化学动力学与地理环境参数？", ["化学", "地理", "物理"]],
-["生物钟节律的数学建模如何揭示物理温度补偿机制与化学调控网络？", ["生物", "物理", "化学", "数学"]],
-["智慧医疗中的可穿戴设备数据如何结合生物信号处理与社会行为分析？", ["医疗", "生物", "社会学", "数学"]],
-["农业害虫抗药性治理的博弈模型需考虑哪些社会学农户决策行为？", ["农业", "社会学", "生物", "数学"]],
-["地理边界划分对历史文化认同的影响：数学分区算法与社会学指标的平衡", ["地理", "历史", "社会学", "数学"]],
-["金融反欺诈系统的图神经网络如何融合社会学关系链与数学表示学习？", ["金融", "社会学", "数学"]],
-["土壤有机质分解的温度敏感性模型如何整合生物酶动力学与化学稳定机制？", ["农业", "生物", "化学", "数学"]],
-["医院急诊科流程优化需结合哪些物理学排队理论与地理空间布局？", ["医疗", "物理", "地理", "数学"]],
-["量子传感技术在生物医学成像中的物理极限与数学重构方法", ["物理", "生物", "数学", "医疗"]],
-["农业气候风险区划如何通过地理气候数据与作物数学模型耦合实现？", ["农业", "地理", "数学"]],
-["医疗质量评价体系中的社会学患者满意度如何量化为数学指标？", ["医疗", "社会学", "数学"]],
-["从历史文献分析看中国古代四大发明对物理与化学学科发展的促进", ["历史", "物理", "化学"]],
-["金融市场的极端风险预警需要哪些物理相变理论与数学突变模型？", ["金融", "物理", "数学"]],
-["生物细胞通讯的数学建模如何揭示化学信号转导与物理力传导的协同？", ["生物", "化学", "物理", "数学"]],
-["地理国情普查中的土地利用分类如何结合化学遥感光谱与数学聚类算法？", ["地理", "化学", "数学"]],
-["农业保护性耕作的碳汇效应评估需整合哪些生物土壤过程与数学核算方法？", ["农业", "生物", "数学"]],
-["医院建筑节能设计如何平衡物理学能耗模拟与地理微气候条件？", ["医疗", "物理", "地理", "数学"]],
-["社会学中的城市社区分异研究需要哪些地理空间分析与数学统计工具？", ["社会学", "地理", "数学"]],
-["量子生物学在光合作用研究中的化学反应路径优化与数学建模", ["物理", "化学", "生物", "数学"]],
-["精准医疗中的多组学数据整合如何结合生物网络分析与数学降维技术？", ["医疗", "生物", "数学"]],
-["金融保险科技中的区块链应用如何体现社会学信任机制与数学密码学的结合？", ["金融", "社会学", "数学"]],
-["地理空间大数据在疫情防控中的应用需要哪些化学环境因子修正？", ["地理", "化学", "医疗", "数学"]],
-["农业物联网系统的作物生长预测模型如何融合生物传感器与数学回归算法？", ["农业", "生物", "数学", "计算机"]],
-["医疗影像诊断的AI系统需结合哪些物理学成像原理与生物医学知识？", ["医疗", "物理", "生物", "数学"]],
-["社会学中的教育机会公平研究如何应用数学因果推断方法？", ["社会学", "数学", "教育"]],
-["大气污染物长距离传输的地理轨迹分析与化学溯源模型的整合", ["地理", "化学", "数学"]],
-["生物代谢网络的数学建模如何指导合成生物学中的化学生产优化？", ["生物", "化学", "数学", "工程"]],
-["金融监管科技中的社会学合规行为分析与数学风险计量模型", ["金融", "社会学", "数学"]],
-["从历史气候数据看地理环境变迁对农业文明兴衰的影响", ["历史", "地理", "农业"]],
-["量子计算在密码学中的应用如何改变金融安全体系与数学算法基础？", ["金融", "物理", "数学", "计算机"]],
-["医疗资源区域配置公平性评估需要哪些地理可达性与社会学指标？", ["医疗", "地理", "社会学", "数学"]],
-["农业秸秆综合利用的化学转化路径如何通过生物催化剂优化？", ["农业", "化学", "生物"]],
-["医院感染控制的空间隔离设计需结合物理学空气动力学与地理空间分析", ["医疗", "物理", "地理", "数学"]],
-["社会学中的组织网络分析如何应用数学图论与计算机仿真？", ["社会学", "数学", "计算机"]],
-["地理加权回归在房地产估值中的社会学人口因子修正方法", ["地理", "社会学", "数学", "金融"]],
-["生物膜形成过程的数学建模与物理流体力学及化学信号传导的耦合", ["生物", "物理", "化学", "数学"]],
-["精准农业中的无人机遥感数据如何结合化学植被指数与数学插值算法？", ["农业", "化学", "地理", "数学"]],
-["医疗人工智能伦理的社会学考量与数学可解释性建模的平衡", ["医疗", "社会学", "数学"]],
-["从历史档案看丝绸之路对地理认知与农业物种交流的促进作用", ["历史", "地理", "农业"]],
-["金融市场的社会学群体行为分析如何应用物理学自组织临界理论？", ["金融", "社会学", "物理", "数学"]],
-["土壤重金属污染的植物修复效率评估需要哪些生物累积模型与化学形态分析？", ["农业", "生物", "化学", "数学"]],
-["医院建筑节能的物理模拟与地理气候适应性设计的多目标优化", ["医疗", "物理", "地理", "数学"]],
-["社会学中的文化传播模型如何借鉴物理学扩散方程与数学偏微分方法？", ["社会学", "物理", "数学"]],
-["地理空间分析在精准扶贫中的应用需要哪些社会学贫困指标与数学方法？", ["地理", "社会学", "数学"]],
-["生物钟基因表达的数学建模揭示物理温度补偿与化学修饰的协同机制", ["生物", "物理", "化学", "数学"]],
-["农业温室气体排放的化学过程模型与生物土壤呼吸的数学整合", ["农业", "化学", "生物", "数学"]],
-["医疗质量改进的六西格玛管理如何结合社会学患者体验与数学流程优化？", ["医疗", "社会学", "数学"]],
-["量子传感在生物医学检测中的物理极限与化学标记技术的协同", ["物理", "化学", "生物", "医疗"]],
-["金融反洗钱监测系统如何融合社会学交易网络与数学异常检测算法？", ["金融", "社会学", "数学"]],
-["地理国情监测中的化学污染热点识别与数学统计方法的结合", ["地理", "化学", "数学"]],
-["医院后勤物资配送优化需要哪些地理路径规划与数学线性规划方法？", ["医疗", "地理", "数学"]],
-["社会学中的城市空间正义研究如何应用数学空间计量方法？", ["社会学", "地理", "数学"]],
-["生物代谢工程中的化学反应路径优化与数学约束建模", ["生物", "化学", "数学", "工程"]],
-["农业生态系统服务价值评估的地理空间核算与数学统计方法", ["农业", "地理", "数学"]],
-["医疗AI辅助诊断的可靠性验证需结合物理测量不确定度与数学置信区间分析", ["医疗", "物理", "数学"]],
-["从历史文献看中国古代天文观测对地理导航与农业历法的影响", ["历史", "地理", "农业"]],
-["金融衍生品市场的物理类比模型与数学随机微分方程的演化", ["金融", "物理", "数学"]],
-["生物细胞自噬过程的数学建模与化学调控及物理力传导的耦合", ["生物", "化学", "物理", "数学"]],
-["地理脆弱性评价中的化学污染暴露与社会学风险感知的整合分析", ["地理", "化学", "社会学", "数学"]],
-["智慧农业中的作物表型组学数据如何结合生物遗传模型与数学关联分析？", ["农业", "生物", "数学"]],
-["医院应急管理的物理疏散模拟与社会学行为决策的多主体建模", ["医疗", "物理", "社会学", "数学"]],
-["社会学中的代际流动研究如何应用数学随机森林算法与社会网络分析？", ["社会学", "数学"]],
-["大气污染物源解析的化学指纹识别与地理空间反演的数学整合", ["化学", "地理", "数学"]],
-["量子生物学中的酶促反应隧穿效应与数学概率模型的验证", ["物理", "生物", "化学", "数学"]],
-["医疗费用控制的社会学医保支付改革与数学精算模型的协同", ["医疗", "社会学", "数学"]],
-["农业碳足迹核算的化学生命周期评估与地理空间数学模型", ["农业", "化学", "地理", "数学"]],
-["医院建筑通风系统的物理流体模拟与地理微气候数据的整合优化", ["医疗", "物理", "地理", "数学"]]]
+["How does physics affect social development? Please analyze by combining mathematical models and considering biological factors?", ["Biology", "Sociology", "Physics", "Mathematics"]],
+["How does the application of geographic information systems in agricultural planning reflect the combination of mathematical statistics and chemical analysis?", ["Geography", "Agriculture", "Mathematics", "Chemistry"]],
+["Taking the COVID-19 pandemic as an example, how do medical resource allocation models integrate sociological equity principles and mathematical optimization algorithms?", ["Medical", "Sociology", "Mathematics"]],
+["Mathematical modeling methods and historical evolution of quantum mechanics principles in biological photosynthesis research", ["Physics", "Biology", "Mathematics", "History"]],
+["What is the analogous relationship between chaotic phenomena in financial markets and nonlinear systems in physics? Please explain with mathematical models", ["Finance", "Physics", "Mathematics"]],
+["What geographical, chemical, and mathematical methods need to be integrated in simulating the impact of the Qinghai-Tibet Plateau uplift on climate?", ["Geography", "Chemistry", "Mathematics"]],
+["How do antibiotic resistance transmission models combine sociological behavior analysis and biological network computing?", ["Biology", "Medical", "Sociology", "Mathematics"]],
+["From historical documents, how did ancient Chinese water conservancy projects reflect the combination of physical mechanics and agricultural practices?", ["History", "Physics", "Agriculture"]],
+["Mathematical integration methods of geographic remote sensing data and chemical pollutant diffusion models in urban heat island effect assessment", ["Geography", "Chemistry", "Mathematics"]],
+["How does group dynamics in sociology draw on physics phase transition theory and mathematical differential equations?", ["Sociology", "Physics", "Mathematics"]],
+["How does mathematical modeling of photosynthetic quantum efficiency promote the design of agricultural photobioreactors?", ["Biology", "Agriculture", "Mathematics", "Physics"]],
+["What are the similarities and differences between Monte Carlo simulation in financial risk assessment and physical particle transport models?", ["Finance", "Physics", "Mathematics"]],
+["What chemical and mathematical methods need to be integrated into agricultural pest early warning models based on geographic information systems?", ["Geography", "Agriculture", "Chemistry", "Mathematics"]],
+["How do bioinformatics models for virus mutation prediction combine sociological transmission network analysis?", ["Biology", "Medical", "Sociology", "Mathematics"]],
+["From a historical perspective, how did alchemy promote the early integration of chemistry and physical metallurgy technology?", ["History", "Chemistry", "Physics"]],
+["What biological anatomy and physical imaging principles need to be integrated into deep learning models for medical image segmentation?", ["Medical", "Biology", "Physics", "Mathematics"]],
+["What mathematical relationship exists between financial derivative pricing models and diffusion equations in physics?", ["Finance", "Physics", "Mathematics"]],
+["How do soil heavy metal pollution remediation schemes integrate geographic spatial analysis and chemical stabilization technologies?", ["Geography", "Agriculture", "Chemistry"]],
+["How does the phase transition model of social opinion dissemination draw on the Ising model in physics?", ["Sociology", "Physics", "Mathematics"]],
+["What biological, climatic, and geographical factors need to be considered in mathematical models for predicting agricultural pest populations?", ["Agriculture", "Biology", "Geography", "Mathematics"]],
+["How does the application of nuclear magnetic resonance technology in biomedicine reflect the combination of physical principles and chemical analysis?", ["Physics", "Chemistry", "Medical"]],
+["What social network analysis and mathematical statistical methods are needed for financial systemic risk monitoring?", ["Finance", "Sociology", "Mathematics"]],
+["How do ice core data in paleoclimate reconstruction reflect the correlation between chemical composition and geographical latitude?", ["Geography", "Chemistry", "History"]],
+["How do multi-scale models for protein folding simulation integrate physical molecular dynamics and mathematical optimization algorithms?", ["Biology", "Physics", "Mathematics"]],
+["What chemical fertilizer dynamics and geographical environment parameters need to be integrated into crop growth models in smart agriculture?", ["Agriculture", "Chemistry", "Geography", "Mathematics"]],
+["How do optimization models for spatio-temporal allocation of medical resources balance social equity and logistics efficiency?", ["Medical", "Sociology", "Geography", "Mathematics"]],
+["From historical document analysis, how did Silk Road trade promote agricultural species migration and geographical cognitive development?", ["History", "Agriculture", "Geography"]],
+["How do high-frequency trading strategies in financial markets apply stochastic process theory from physics?", ["Finance", "Physics", "Mathematics"]],
+["What chemical fingerprint identification and geographical diffusion models are needed for source analysis of atmospheric PM2.5 pollution?", ["Chemistry", "Geography", "Mathematics"]],
+["How does research on urban spatial differentiation in sociology combine geographic spatial analysis and statistical modeling?", ["Sociology", "Geography", "Mathematics"]],
+["Mathematical modeling methods and experimental verification of quantum biology in enzyme-catalyzed reactions", ["Physics", "Biology", "Mathematics", "Chemistry"]],
+["How do variable rate fertilization systems in precision agriculture integrate geographic GIS data and crop nutrition mathematical models?", ["Agriculture", "Geography", "Mathematics", "Chemistry"]],
+["What sociological behavioral factors and chemical degradation mechanisms need to be considered in life cycle assessment of medical waste treatment?", ["Medical", "Sociology", "Chemistry"]],
+["How did the development of ancient navigation technology promote the interaction between geographical discoveries and historical processes?", ["History", "Geography", "Physics"]],
+["How do financial insurance actuarial models draw on life table analysis methods in biology?", ["Finance", "Biology", "Mathematics"]],
+["How to quantify the role of microorganisms in soil carbon cycle models through mathematical network analysis?", ["Agriculture", "Biology", "Mathematics", "Chemistry"]],
+["What geographical accessibility and social equity indicators need to be balanced in hospital location optimization models?", ["Medical", "Geography", "Sociology", "Mathematics"]],
+["Analysis of material cycle efficiency in agricultural ecosystems from the perspective of physics energy conservation", ["Agriculture", "Physics", "Biology", "Mathematics"]],
+["How does molecular docking simulation in chemical drug research and development combine biological receptor dynamics and mathematical optimization?", ["Chemistry", "Biology", "Medical", "Mathematics"]],
+["How do mathematical models for social media public opinion monitoring reflect the characteristics of sociological group behavior?", ["Sociology", "Mathematics", "Computer"]],
+["Geographical channel analysis of historical plague transmission and evolutionary correlation with modern infectious disease models", ["History", "Geography", "Medical", "Mathematics"]],
+["What physical fluctuation theories and mathematical methods are needed for volatility surface fitting in financial derivatives markets?", ["Finance", "Physics", "Mathematics"]],
+["How does molecular design for crop genetic improvement integrate biological gene networks and agricultural phenotypic mathematical models?", ["Agriculture", "Biology", "Mathematics"]],
+["What physical dose distribution and biological tissue responses need to be considered in medical radiotherapy planning systems?", ["Medical", "Physics", "Biology"]],
+["How does intergenerational mobility research in sociology apply mathematical Markov chain models?", ["Sociology", "Mathematics"]],
+["Chemical pollution factor correction methods for geographically weighted regression in urban housing price analysis", ["Geography", "Chemistry", "Mathematics", "Finance"]],
+["Physical implementation and mathematical algorithm challenges of quantum computing in drug molecular simulation", ["Physics", "Chemistry", "Biology", "Mathematics"]],
+["What chemical water-saving technologies need to be balanced with geographical spatial distribution in agricultural water resource management?", ["Agriculture", "Geography", "Chemistry"]],
+["How do hospital infection control models combine sociological interpersonal contact networks and biological transmission dynamics?", ["Medical", "Sociology", "Biology", "Mathematics"]],
+["From historical archives, how did physics breakthroughs during the Industrial Revolution promote the industrialization of chemistry?", ["History", "Physics", "Chemistry"]],
+["How does sociological feature engineering in financial credit scoring models optimize mathematical classification algorithms?", ["Finance", "Sociology", "Mathematics"]],
+["What chemical kinetics and geographical environment parameters need to be integrated into atmospheric ozone layer hole repair plans?", ["Chemistry", "Geography", "Physics"]],
+["How does mathematical modeling of biological clock rhythms reveal physical temperature compensation mechanisms and chemical regulatory networks?", ["Biology", "Physics", "Chemistry", "Mathematics"]],
+["How do wearable device data in smart healthcare combine biological signal processing and social behavior analysis?", ["Medical", "Biology", "Sociology", "Mathematics"]],
+["What sociological farmer decision-making behaviors need to be considered in game models for agricultural pest resistance management?", ["Agriculture", "Sociology", "Biology", "Mathematics"]],
+["The impact of geographical boundary division on historical and cultural identity: balancing mathematical zoning algorithms and sociological indicators", ["Geography", "History", "Sociology", "Mathematics"]],
+["How do graph neural networks in financial anti-fraud systems integrate sociological relationship chains and mathematical representation learning?", ["Finance", "Sociology", "Mathematics"]],
+["How do temperature sensitivity models of soil organic matter decomposition integrate biological enzyme kinetics and chemical stabilization mechanisms?", ["Agriculture", "Biology", "Chemistry", "Mathematics"]],
+["What physics queuing theory and geographical spatial layout need to be combined in hospital emergency department process optimization?", ["Medical", "Physics", "Geography", "Mathematics"]],
+["Physical limits and mathematical reconstruction methods of quantum sensing technology in biomedical imaging", ["Physics", "Biology", "Mathematics", "Medical"]],
+["How to realize agricultural climate risk zoning through coupling of geographical climate data and crop mathematical models?", ["Agriculture", "Geography", "Mathematics"]],
+["How to quantify sociological patient satisfaction into mathematical indicators in medical quality evaluation systems?", ["Medical", "Sociology", "Mathematics"]],
+["From historical document analysis, how did China's four great inventions in ancient times promote the development of physics and chemistry disciplines?", ["History", "Physics", "Chemistry"]],
+["What physical phase transition theories and mathematical catastrophe models are needed for extreme risk early warning in financial markets?", ["Finance", "Physics", "Mathematics"]],
+["How does mathematical modeling of biological cell communication reveal the synergy between chemical signal transduction and physical force conduction?", ["Biology", "Chemistry", "Physics", "Mathematics"]],
+["How does land use classification in geographical national conditions surveys combine chemical remote sensing spectroscopy and mathematical clustering algorithms?", ["Geography", "Chemistry", "Mathematics"]],
+["What biological soil processes and mathematical accounting methods need to be integrated into the assessment of carbon sequestration effects of agricultural conservation tillage?", ["Agriculture", "Biology", "Mathematics"]],
+["How do hospital building energy-saving designs balance physics energy consumption simulation and geographical microclimate conditions?", ["Medical", "Physics", "Geography", "Mathematics"]],
+["What geographic spatial analysis and mathematical statistical tools are needed for research on urban community differentiation in sociology?", ["Sociology", "Geography", "Mathematics"]],
+["Chemical reaction path optimization and mathematical modeling of quantum biology in photosynthesis research", ["Physics", "Chemistry", "Biology", "Mathematics"]],
+["How does multi-omics data integration in precision medicine combine biological network analysis and mathematical dimensionality reduction techniques?", ["Medical", "Biology", "Mathematics"]],
+["How does blockchain application in financial insurance technology reflect the combination of sociological trust mechanisms and mathematical cryptography?", ["Finance", "Sociology", "Mathematics"]],
+["What chemical environmental factor corrections are needed for the application of geospatial big data in epidemic prevention and control?", ["Geography", "Chemistry", "Medical", "Mathematics"]],
+["How do crop growth prediction models in agricultural Internet of Things systems integrate biological sensors and mathematical regression algorithms?", ["Agriculture", "Biology", "Mathematics", "Computer"]],
+["What physics imaging principles and biomedical knowledge need to be combined in AI systems for medical image diagnosis?", ["Medical", "Physics", "Biology", "Mathematics"]],
+["How does research on educational opportunity equity in sociology apply mathematical causal inference methods?", ["Sociology", "Mathematics", "Education"]],
+["Integration of geographical trajectory analysis and chemical source tracing models for long-distance transport of atmospheric pollutants", ["Geography", "Chemistry", "Mathematics"]],
+["How does mathematical modeling of biological metabolic networks guide chemical production optimization in synthetic biology?", ["Biology", "Chemistry", "Mathematics", "Engineering"]],
+["Sociological compliance behavior analysis and mathematical risk measurement models in financial regulatory technology", ["Finance", "Sociology", "Mathematics"]],
+["From historical climate data, how did geographical environment changes affect the rise and fall of agricultural civilizations?", ["History", "Geography", "Agriculture"]],
+["How does the application of quantum computing in cryptography change financial security systems and mathematical algorithm foundations?", ["Finance", "Physics", "Mathematics", "Computer"]],
+["What geographical accessibility and sociological indicators are needed for evaluating the fairness of regional allocation of medical resources?", ["Medical", "Geography", "Sociology", "Mathematics"]],
+["How to optimize chemical conversion paths of agricultural straw comprehensive utilization through biological catalysts?", ["Agriculture", "Chemistry", "Biology"]],
+["Spatial isolation design for hospital infection control needs to combine physics aerodynamics and geographical spatial analysis", ["Medical", "Physics", "Geography", "Mathematics"]],
+["How does organizational network analysis in sociology apply mathematical graph theory and computer simulation?", ["Sociology", "Mathematics", "Computer"]],
+["Sociological demographic factor correction methods for geographically weighted regression in real estate valuation", ["Geography", "Sociology", "Mathematics", "Finance"]],
+["Coupling of mathematical modeling of biofilm formation processes with physical fluid dynamics and chemical signal transduction", ["Biology", "Physics", "Chemistry", "Mathematics"]],
+["How do UAV remote sensing data in precision agriculture combine chemical vegetation indices and mathematical interpolation algorithms?", ["Agriculture", "Chemistry", "Geography", "Mathematics"]],
+["Balancing sociological considerations and mathematical interpretability modeling in medical artificial intelligence ethics", ["Medical", "Sociology", "Mathematics"]],
+["From historical archives, how did the Silk Road promote geographical cognition and agricultural species exchange?", ["History", "Geography", "Agriculture"]],
+["How does sociological group behavior analysis in financial markets apply physics self-organized criticality theory?", ["Finance", "Sociology", "Physics", "Mathematics"]],
+["What biological accumulation models and chemical speciation analyses are needed for evaluating phytoremediation efficiency of soil heavy metal pollution?", ["Agriculture", "Biology", "Chemistry", "Mathematics"]],
+["Multi-objective optimization of physical simulation and geographical climate adaptive design for hospital building energy conservation", ["Medical", "Physics", "Geography", "Mathematics"]],
+["How do cultural transmission models in sociology draw on physics diffusion equations and mathematical partial differential methods?", ["Sociology", "Physics", "Mathematics"]],
+["What sociological poverty indicators and mathematical methods are needed for the application of geospatial analysis in targeted poverty alleviation?", ["Geography", "Sociology", "Mathematics"]],
+["Mathematical modeling of circadian gene expression reveals the synergistic mechanism of physical temperature compensation and chemical modification", ["Biology", "Physics", "Chemistry", "Mathematics"]],
+["Mathematical integration of chemical process models of agricultural greenhouse gas emissions and biological soil respiration", ["Agriculture", "Chemistry", "Biology", "Mathematics"]],
+["How does Six Sigma management for medical quality improvement combine sociological patient experience and mathematical process optimization?", ["Medical", "Sociology", "Mathematics"]],
+["Synergy between physical limits of quantum sensing in biomedical detection and chemical labeling technology", ["Physics", "Chemistry", "Biology", "Medical"]],
+["How do financial anti-money laundering monitoring systems integrate sociological transaction networks and mathematical anomaly detection algorithms?", ["Finance", "Sociology", "Mathematics"]],
+["Combination of chemical pollution hotspot identification and mathematical statistical methods in geographical national conditions monitoring", ["Geography", "Chemistry", "Mathematics"]],
+["What geographical path planning and mathematical linear programming methods are needed for hospital logistics material distribution optimization?", ["Medical", "Geography", "Mathematics"]],
+["How does research on urban spatial justice in sociology apply mathematical spatial econometric methods?", ["Sociology", "Geography", "Mathematics"]],
+["Chemical reaction path optimization and mathematical constraint modeling in biological metabolic engineering", ["Biology", "Chemistry", "Mathematics", "Engineering"]],
+["Geospatial accounting and mathematical statistical methods for evaluating agricultural ecosystem service values", ["Agriculture", "Geography", "Mathematics"]],
+["Reliability verification of medical AI-assisted diagnosis needs to combine physical measurement uncertainty and mathematical confidence interval analysis", ["Medical", "Physics", "Mathematics"]],
+["From historical documents, how did ancient Chinese astronomical observations affect geographical navigation and agricultural calendars?", ["History", "Geography", "Agriculture"]],
+["Evolution of physical analogy models and mathematical stochastic differential equations in financial derivatives markets", ["Finance", "Physics", "Mathematics"]],
+["Coupling of mathematical modeling of biological cell autophagy processes with chemical regulation and physical force conduction", ["Biology", "Chemistry", "Physics", "Mathematics"]],
+["Integrated analysis of chemical pollution exposure and sociological risk perception in geographical vulnerability assessment", ["Geography", "Chemistry", "Sociology", "Mathematics"]],
+["How do crop phenomics data in smart agriculture combine biological genetic models and mathematical correlation analysis?", ["Agriculture", "Biology", "Mathematics"]],
+["Multi-agent modeling of physical evacuation simulation and sociological behavior decision-making in hospital emergency management", ["Medical", "Physics", "Sociology", "Mathematics"]],
+["How does intergenerational mobility research in sociology apply mathematical random forest algorithms and social network analysis?", ["Sociology", "Mathematics"]],
+["Mathematical integration of chemical fingerprint identification and geospatial inversion for atmospheric pollutant source apportionment", ["Chemistry", "Geography", "Mathematics"]],
+["Verification of enzymatic reaction tunneling effect and mathematical probability models in quantum biology", ["Physics", "Biology", "Chemistry", "Mathematics"]],
+["Synergy between sociological medical insurance payment reform and mathematical actuarial models for medical cost control", ["Medical", "Sociology", "Mathematics"]],
+["Chemical life cycle assessment and geospatial mathematical models for agricultural carbon footprint accounting", ["Agriculture", "Chemistry", "Geography", "Mathematics"]],
+["Integration and optimization of physical fluid simulation of hospital building ventilation systems with geographical microclimate data", ["Medical", "Physics", "Geography", "Mathematics"]]]
 
-# ====== 模型配置 ======
+# ====== Model Configuration ======
 models_config = {
     "gemini-2.5-flash-preview-04-17-thinking": {
         "api_key": "sk-VJrRRrYljSfcLQPKD2ocOw8NrKaFOPsTszZy1gb5qWJixq2Y",
@@ -168,11 +168,11 @@ models_config = {
     }
 }
 
-# ====== 主处理流程 ======
+# ====== Main Processing Flow ======
 all_model_results = []
 
 for model_name, config in models_config.items():
-    print(f"\n🚀 开始使用模型: {model_name}")
+    print(f"\n🚀 Starting to use model: {model_name}")
     model_results = []
 
     api_client = OpenAI(
@@ -182,21 +182,21 @@ for model_name, config in models_config.items():
     )
 
     for idx, core_question in enumerate(questions):
-        print(f"\n{'='*40}\n  🔍 第 {idx+1} 个问题：{core_question[0]}\n{'='*40}")
+        print(f"\n{'='*40}\n  🔍 Question {idx+1}: {core_question[0]}\n{'='*40}")
 
         try:
             domains_list = core_question[1]
             sum_list = []
 
             for domain in domains_list:
-                print(f"\n🌐 处理领域: {domain}")
+                print(f"\n🌐 Processing domain: {domain}")
 
                 def request_func():
                     return api_client.chat.completions.create(
                         model=model_name,
                         messages=[{
                             "role": "user",
-                            "content": rf"""从{domain}的角度来看，围绕“ \"{core_question[0]}\"”最重要的关键因素有哪些？\n仅输出因素本身，前面不要带上任何分析语句，一行一个，去重且按重要性排序 输出严格按照以下格式：因素A 因素B"""
+                            "content": rf"""From the perspective of {domain}, what are the most important key factors surrounding " \"{core_question[0]}\" "?\nOutput only the factors themselves, without any preceding analytical statements, one per line, deduplicated and sorted by importance. Output strictly in the following format: Factor A Factor B"""
                         }]
                     )
 
@@ -206,7 +206,7 @@ for model_name, config in models_config.items():
                         response = request_func()
                         tasks3 = response.choices[0].message.content
 
-                        # 清洗：去前缀 + 去英文/符号 + 去空
+                        # Cleaning: remove prefixes + remove English/symbols + remove empty
                         topic_list = [domain] + [
                             factor for factor in [
                                 remove_noise(clean_line_prefix(line))
@@ -216,14 +216,14 @@ for model_name, config in models_config.items():
 
                         sum_list.append(topic_list)
 
-                        print(f"    ✅ 提取到 {len(topic_list)-1} 个关键因素:")
+                        print(f"    ✅ Extracted {len(topic_list)-1} key factors:")
                         for factor in topic_list[1:]:
                             print(f"      - {factor}")
 
                         break
                     except Exception as e:
                         if attempt < max_attempts - 1:
-                            print(f"  ⚠️ 重试 ({attempt+1}/{max_attempts}): {e}")
+                            print(f"  ⚠️ Retrying ({attempt+1}/{max_attempts}): {e}")
                             time.sleep(1)
                         else:
                             raise e
@@ -236,10 +236,10 @@ for model_name, config in models_config.items():
                 "sum_list": sum_list
             })
 
-            print(f"\n✅ 完成问题 {idx+1}，共提取 {sum(len(x)-1 for x in sum_list)} 个因素")
+            print(f"\n✅ Completed question {idx+1}, extracted a total of {sum(len(x)-1 for x in sum_list)} factors")
 
         except Exception as e:
-            print(f"  ❌ 处理失败：{e}")
+            print(f"  ❌ Processing failed: {e}")
             model_results.append({
                 "question_index": idx + 1,
                 "core_question": core_question,
@@ -251,9 +251,9 @@ for model_name, config in models_config.items():
         "results": model_results
     })
 
-    print(f"\n{'*'*40}\n✅ 模型 {model_name} 所有问题处理完成\n{'*'*40}")
+    print(f"\n{'*'*40}\n✅ All questions processed for model {model_name}\n{'*'*40}")
 
-# ====== 保存结果 ======
+# ====== Save Results ======
 output_dir = r"D:\\project"
 os.makedirs(output_dir, exist_ok=True)
 output_file = os.path.join(output_dir, "generated_results_multi_model.json")
@@ -261,4 +261,4 @@ output_file = os.path.join(output_dir, "generated_results_multi_model.json")
 with open(output_file, "w", encoding="utf-8") as f:
     json.dump(all_model_results, f, ensure_ascii=False, indent=4)
 
-print(f"\n🎉 所有模型问题处理完成，结果已保存到：{output_file}")
+print(f"\n🎉 All model questions processed, results saved to: {output_file}")
