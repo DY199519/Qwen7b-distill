@@ -1,12 +1,12 @@
 import subprocess
 
-# 要按顺序运行的 Python 文件（请按实际顺序填写文件名）
+# Python files to run in sequence (please fill in the filenames in the actual order)
 scripts_to_run = [
     'file1.6-Multsm.py',
     'file1.6-Multsm2.py',
     'file1.6-Multsm2fix.py',
     'file1.6-Multsm3.py',
-    #mergepairwise.py，这个平时就不跑
+    #mergepairwise.py, this one is not run normally
     'file1.6-Multsm4-getscore-basic.py',
     'file1.6-Multsm4-getscore-context.py',
     'file1.6-Mulysm5-CountFormMsm.py',
@@ -19,10 +19,10 @@ scripts_to_run = [
 ]
 
 for script in scripts_to_run:
-    print(f"\n🚀 正在运行：{script}")
+    print(f"\n🚀 Running: {script}")
     try:
         subprocess.run(["python", script], check=True)
-        print(f"✅ 已完成：{script}")
-    except subprocess.CalledProcessError as e: 
-        print(f"❌ 运行失败：{script}\n错误信息：{e}")
-        break  # 如果某一步失败，终止后续脚本执行
+        print(f"✅ Completed: {script}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Run failed: {script}\nError message: {e}")
+        break  # If a step fails, terminate the execution of subsequent scripts
