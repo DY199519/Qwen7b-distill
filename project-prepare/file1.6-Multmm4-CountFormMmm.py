@@ -3,14 +3,14 @@ import pandas as pd
 from collections import defaultdict
 from itertools import combinations
 
-# === 指定评分 JSON 文件及对应模型标签 ===
+# === Specify scoring JSON files and corresponding model tags ===
 json_files = {
     "Deepseek": "pairwise_grades_top234_deepseek.json",
     "Qwen": "pairwise_grades_top234_qwen.json",
-    "gemini":"pairwise_grades_top234_gemini.json"
+    "gemini": "pairwise_grades_top234_gemini.json"
 }
 
-# === 加载题目与学科映射数据 ===
+# === Load question and subject mapping data ===
 with open("generated_results_multi_model1.json", "r", encoding="utf-8") as f:
     domain_data_1 = json.load(f)
 
@@ -21,7 +21,7 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     domain_data_2 = []
 
-# === 提取题目 - 学科映射 ===
+# === Extract question-subject mapping ===
 question_to_domains = {}
 def extract_domains(data):
     for item in data:
@@ -33,7 +33,7 @@ def extract_domains(data):
 extract_domains(domain_data_1)
 extract_domains(domain_data_2)
 
-# === 提取评分数据 ===
+# === Extract scoring data ===
 def extract_pairs(data, key, tag):
     rows = []
     for q, content in data.items():
@@ -51,7 +51,7 @@ def extract_pairs(data, key, tag):
             })
     return pd.DataFrame(rows)
 
-# === 合并所有评分数据 ===
+# === Merge all scoring data ===
 df_list = []
 for tag, file in json_files.items():
     with open(file, "r", encoding="utf-8") as f:
@@ -60,11 +60,11 @@ for tag, file in json_files.items():
     df_list.append(df)
 df_all = pd.concat(df_list, ignore_index=True)
 
-# === 所有问题与模型 ===
+# === All questions and models ===
 all_questions = list(dict.fromkeys(df_all["question"].tolist()))
 all_models = sorted(set(df_all["model_a"]) | set(df_all["model_b"]))
 
-# === 模型总得分统计 ===
+# === Model total score statistics ===
 def overall_scores(df):
     bucket = defaultdict(lambda: defaultdict(list))
     for _, row in df.iterrows():
@@ -84,13 +84,13 @@ def overall_scores(df):
 scores_df = overall_scores(df_all)
 scores_sorted = scores_df.sort_values(["Tag", "total_sum"], ascending=[True, False])
 
-# === 总均分映射表 ===
+# === Total average score mapping table ===
 def build_avg_map(df):
     return {(row["Tag"], row["Model"]): row["total_avg"] for _, row in df.iterrows()}
 
 avg_map = build_avg_map(scores_sorted)
 
-# === 学科统计表 ===
+# === Subject statistics table ===
 def domain_tables(df, avg_map):
     seen = set()
     d_totals = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
@@ -119,13 +119,13 @@ def domain_tables(df, avg_map):
             row = {"Model": model}
             for dim in ["logic", "depth", "innovation", "accuracy", "completeness", "total"]:
                 row[dim] = round(dims.get(dim, 0), 2)
-            row["单学科均分"] = round(row["total"] / cnt, 2) if cnt else 0
-            row["模型总均分"] = avg_map.get((tag, model), 0)
+            row["Average score per subject"] = round(row["total"] / cnt, 2) if cnt else 0
+            row["Overall average score of model"] = avg_map.get((tag, model), 0)
             row["Tag"] = tag
             rows.append(row)
         df_table = pd.DataFrame(rows).sort_values("total", ascending=False)
         df_table.loc[len(df_table.index)] = {
-            "Model": f"共有 {len(d_qcount[(tag, dom)])} 道题目涉及“{dom}”学科"
+            "Model": f"A total of {len(d_qcount[(tag, dom)])} questions involve the subject '{dom}'"
         }
         tables[f"{tag}_{dom}"] = df_table
     return tables
@@ -146,23 +146,23 @@ def winrate_matrix(df, models):
                 mat.loc[m1, m2] = f"{wins/len(sub)*100:.1f}% ({wins})"
     return mat
 
-# === 生成各类统计表 ===
+# === Generate various statistics tables ===
 domain_tables_all = domain_tables(df_all, avg_map)
 
-# === 题目-学科表格 ===
+# === Question-subject table ===
 question_domains_df = pd.DataFrame([{
     "ID": i+1,
     "Question": q,
     "Domains": ", ".join(question_to_domains.get(q, []))
 } for i, q in enumerate(all_questions)])
 
-# === 输出 TXT 文件（可选）===
+# === Output TXT file (optional) ===
 with open("question_list_with_domains.txt", "w", encoding="utf-8") as f:
-    f.write("【题目编号 - 问题 - 学科】\n")
+    f.write("[Question ID - Question - Subject]\n")
     for i, q in enumerate(all_questions, 1):
-        f.write(f"{i}. {q} —— 学科: {', '.join(question_to_domains.get(q, []))}\n")
+        f.write(f"{i}. {q} —— Subject: {', '.join(question_to_domains.get(q, []))}\n")
 
-# === 输出 Excel 文件 ===
+# === Output Excel file ===
 with pd.ExcelWriter("model_comparison_all_tags.xlsx", engine="openpyxl") as w:
     scores_sorted.to_excel(w, sheet_name="Model Scores", index=False)
     question_domains_df.to_excel(w, sheet_name="Question & Domains", index=False)
@@ -174,4 +174,4 @@ with pd.ExcelWriter("model_comparison_all_tags.xlsx", engine="openpyxl") as w:
         matrix = winrate_matrix(sub_df, models)
         matrix.to_excel(w, sheet_name=f"{tag}_Winrate")
 
-print("✅ 所有分析已完成，文件已写入 model_comparison_all_tags.xlsx")
+print("✅ All analyses have been completed, and the file has been written to model_comparison_all_tags.xlsx")
